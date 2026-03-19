@@ -51,10 +51,9 @@ All tiers are priced below a worker's daily tip income to maximise adoption. Pre
 | **T3 · Flash Flood / Waterlogging** | Flood sensor + GPS zone match | Flood sensor feed | ₹100/hr lost | Standard |
 | **T4 · Severe Cold / Dense Fog** | Visibility < 50m or temp < 5°C | OpenWeatherMap API | ₹70/hr lost | Standard |
 | **T5 · Curfew / Civil Strike** | Govt. advisory API + GPS zone blockage confirmed by Zepto, Blinkit & Swiggy Instamart APIs | Govt. advisory API + multi-platform APIs | ₹100/hr lost | Standard |
-| **T6 · Platform Outage / App Downtime (Pro Only)** | Delivery platform services unavailable > 30 mins (order API failure rate > threshold) | Platform status APIs / simulated logs | ₹90/hr lost | **Pro Plan Only** |
+| **T6 · Platform Outage / App Downtime** | Delivery platform services unavailable > 30 mins (order API failure rate > threshold) | Platform status APIs / simulated logs | ₹90/hr lost | **Pro Plan Only** |
 
-**Payout formula:** `payout = hourly_rate × eligible_hours` subject to waiting period, daily hour cap, and weekly coverage cap.
-
+> **Note on T6 (Pro Only):** In the demo, T6 uses simulated platform status logs and synthetic order API failure rate data. In production, this trigger would be validated through public platform status pages (e.g., status.blinkit.com), order API failure rate monitoring as a proxy, and cross-worker signal correlation — if >30% of active workers in a zone stop receiving orders simultaneously, that constitutes evidence of a platform disruption independent of any partner API access.
 ---
 
 ## Features
