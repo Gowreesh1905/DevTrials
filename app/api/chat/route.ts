@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import { createAdminClient } from '@/lib/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Initialize Gemini AI
@@ -13,19 +13,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const supabase = createServerClient();
+    const supabase = createAdminClient();
 
-    // Check for rule-based match in chat_faqs
-    const { data } = await supabase
-      .from('chat_faqs')
-      .select('question, answer, category')
-      .eq('language', language)
-      .eq('is_active', true)
-      .ilike('question', `%${message}%`)
-      .limit(1)
-      .maybeSingle();
-
-    const faqMatch = data as { question: string; answer: string; category: string } | null;
+    // Check for a similar FAQ first before using Gemini
+    const faqMatch = await findFaqMatch(supabase, message, language);
 
     let response: string;
     let queryType: 'rule' | 'ai';
@@ -88,6 +79,83 @@ async function getPolicyContext(supabase: any, language: string) {
     triggers: triggers.data,
     faqs: faqs,
   };
+}
+
+async function findFaqMatch(supabase: any, message: string, language: string) {
+  const normalizedMessage = normalizeText(message);
+
+  const { data: faqs } = await supabase
+    .from('chat_faqs')
+    .select('question, answer, category')
+    .eq('language', language)
+    .eq('is_active', true);
+
+  if (!faqs || faqs.length === 0) {
+    return null;
+  }
+
+  // Exact or partial text match first
+  for (const faq of faqs) {
+    const normalizedQuestion = normalizeText(faq.question);
+    if (
+      normalizedQuestion === normalizedMessage ||
+      normalizedQuestion.includes(normalizedMessage) ||
+      normalizedMessage.includes(normalizedQuestion)
+    ) {
+      return faq;
+    }
+  }
+
+  // Fallback to similarity scoring
+  let bestMatch: any = null;
+  let bestScore = 0;
+
+  for (const faq of faqs) {
+    const normalizedQuestion = normalizeText(faq.question);
+    const score = computeSimilarity(normalizedMessage, normalizedQuestion);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = faq;
+    }
+  }
+
+  // Only use the FAQ if similarity is strong enough
+  return bestScore >= 0.35 ? bestMatch : null;
+}
+
+function normalizeText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function computeSimilarity(a: string, b: string) {
+  if (!a || !b) return 0;
+  const aWords = new Set(a.split(' ').filter(Boolean));
+  const bWords = new Set(b.split(' ').filter(Boolean));
+  const intersection = [...aWords].filter((word) => bWords.has(word)).length;
+  if (intersection === 0) return 0;
+
+  const union = new Set([...aWords, ...bWords]).size;
+  const wordScore = intersection / union;
+
+  const bigramsA = getBigrams(a);
+  const bigramsB = getBigrams(b);
+  const bigramIntersection = bigramsA.filter((bigram) => bigramsB.includes(bigram)).length;
+  const bigramScore = bigramsA.length === 0 || bigramsB.length === 0 ? 0 : bigramIntersection / Math.max(bigramsA.length, bigramsB.length);
+
+  return Math.max(wordScore, bigramScore * 0.8);
+}
+
+function getBigrams(text: string) {
+  const words = text.split(' ').filter(Boolean);
+  const bigrams: string[] = [];
+  for (let i = 0; i < words.length - 1; i++) {
+    bigrams.push(`${words[i]} ${words[i + 1]}`);
+  }
+  return bigrams;
 }
 
 async function generateAIResponse(message: string, context: any, language: string) {
