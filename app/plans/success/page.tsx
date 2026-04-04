@@ -34,6 +34,14 @@ function SuccessContent() {
     pro: 99,
   };
 
+  // Save the purchased plan to localStorage so dashboard can show it
+  useEffect(() => {
+    if (plan) {
+      localStorage.setItem("subscribedPlan", plan);
+      localStorage.setItem("subscribedAt", new Date().toISOString());
+    }
+  }, [plan]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((prev) => {
