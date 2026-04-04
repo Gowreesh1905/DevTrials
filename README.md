@@ -384,17 +384,19 @@ IMD / OpenWeather          Flood Sensor Feed          Govt. Advisory API
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | Next.js + Tailwind CSS |
-| **Backend** | Node.js / Next.js API Routes |
-| **Database** | Supabase (PostgreSQL) |
-| **AI / ML** | Python + FastAPI |
-| **ML Libraries** | Scikit-learn (XGBoost for pricing, Isolation Forest for fraud/risk) |
-| **Maps** | Mapbox / Google Maps |
-| **Payments** | Razorpay Test / Sandbox |
-| **Auth** | Supabase Auth |
-| **Hosting** | Vercel (frontend) + Render (Python ML service) |
+| Layer | Technology | Details |
+|-------|------------|----------|
+| **Frontend** | Next.js + Tailwind CSS | React-based SPA with responsive design |
+| **Backend** | Node.js / Next.js API Routes | Server-side rendering + API layer |
+| **Database** | Supabase (PostgreSQL + PostGIS) | RLS-enabled, geospatial queries |
+| **AI / ML Service** | Python 3.12 + FastAPI + Uvicorn | Standalone microservice (`ml-service/`) |
+| **Premium Engine** | XGBoost Regressor | 9 features, ±20% fairness cap, cold-start fallback |
+| **Fraud Detection** | Isolation Forest (scikit-learn) | 11 behavioral signals, 3-tier decisions, ring detection |
+| **Risk Scoring** | Rule-based Composite Engine | 4-component breakdown (weather/traffic/behavior/fraud) |
+| **Maps** | Mapbox / Google Maps | Zone visualization + GPS validation |
+| **Payments** | Razorpay Test / Sandbox | UPI payout integration |
+| **Auth** | Supabase Auth | OTP-based phone login |
+| **Hosting** | Vercel (frontend) + Render (ML service) | Dual deployment |
 
 ---
 
@@ -410,6 +412,49 @@ All integrations follow an **adapter pattern** — mock providers are used in th
 | Platform session proof | Simulated adapter | Zepto, Blinkit, Swiggy Instamart Partner APIs |
 | Payments | Razorpay sandbox | Razorpay live, UPI rails |
 | Auth | Supabase Auth + OTP simulation | Supabase Auth + real SMS OTP |
+
+---
+
+## ML Service Architecture
+
+The ML microservice (`ml-service/`) is a standalone Python/FastAPI application serving 3 trained models.
+
+### Project Structure
+
+```
+ml-service/
+├── main.py                  # FastAPI app (4 endpoints)
+├── train.py                 # End-to-end training pipeline
+├── generate_data.py         # Synthetic data generator (DB + ML CSVs)
+├── requirements.txt         # Python dependencies
+├── models/
+│   ├── premium_model.py     # XGBoost dynamic premium engine
+│   ├── fraud_model.py       # Isolation Forest fraud detection
+│   ├── risk_model.py        # Composite risk scorer
+│   └── artifacts/           # Trained .joblib model files
+└── data/
+    ├── db/                  # DB-shaped CSVs (mirrors Supabase tables)
+    └── ml/                  # ML-ready feature matrices for training
+```
+
+### API Endpoints
+
+| Endpoint | Method | Input | Output |
+|----------|--------|-------|--------|
+| `/predict/premium` | POST | Worker profile + zone data (9 features) | `{weekly_premium, top_3_factors, week_on_week_delta}` |
+| `/predict/fraud` | POST | Claim + behavioral signals (11 features) | `{anomaly_score, decision, flags, ring_alert}` |
+| `/predict/risk` | POST | Worker profile + zone + season | `{risk_score, breakdown, top_3_drivers}` |
+| `/health` | GET | — | `{status: "ok"}` |
+
+### Model Performance (Latest Training)
+
+| Model | Metric | Value |
+|-------|--------|-------|
+| **XGBoost Premium** | RMSE | ₹0.54 |
+| **Isolation Forest** | Anomaly Rate | 8.1% |
+| **Fraud — Genuine Worker** | Score / Decision | 33/100 → auto_approve |
+| **Fraud — Individual Fraudster** | Score / Decision | 100/100 → reject |
+| **Fraud — Ring Member** | Score / Decision | 56/100 → soft_hold + RING ALERT |
 
 ---
 
@@ -460,12 +505,36 @@ SwiftShield operates as a fully parametric insurance model with no manual claims
 
 ## Getting Started
 
+### 1. Frontend (Next.js)
+
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### 2. ML Service (Python)
+
+```bash
+cd ml-service
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Generate training data & train models
+python3 generate_data.py --workers 200
+python3 train.py --data-dir data/ml
+
+# Start the API server
+python3 -m uvicorn main:app --reload --port 8000
+```
+
+ML API available at [http://localhost:8000/docs](http://localhost:8000/docs) (Swagger UI).
+
+### 3. Database (Supabase)
+
+See `SETUP.md` for full Supabase setup instructions. Run the migrations in order:
+
+1. `supabase/migrations/001_initial_schema.sql` — Core tables + RLS
+2. `supabase/migrations/004_ml_service_extensions.sql` — ML-specific columns

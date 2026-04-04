@@ -40,40 +40,94 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchDashboardData() {
-      const workerId = localStorage.getItem("workerId");
-      const phone = localStorage.getItem("userPhone");
+  // Manual claim modal state
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimForm, setClaimForm] = useState({
+    trigger_type: "rainfall" as TriggerType,
+    duration_minutes: 60,
+    description: "",
+  });
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimSuccess, setClaimSuccess] = useState<string | null>(null);
 
-      if (!workerId && !phone) {
-        setError("Not logged in");
-        setLoading(false);
+  const fetchDashboardData = async () => {
+    const workerId = localStorage.getItem("workerId");
+    const phone = localStorage.getItem("userPhone");
+
+    if (!workerId && !phone) {
+      setError("Not logged in");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams();
+      if (workerId) params.set("workerId", workerId);
+      if (!workerId && phone) params.set("phone", phone);
+
+      const res = await fetch(`/api/dashboard?${params.toString()}`);
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        setError(payload?.error || "Failed to load dashboard data");
         return;
       }
 
-      try {
-        const params = new URLSearchParams();
-        if (workerId) params.set("workerId", workerId);
-        if (!workerId && phone) params.set("phone", phone);
-
-        const res = await fetch(`/api/dashboard?${params.toString()}`);
-        if (!res.ok) {
-          const payload = await res.json().catch(() => null);
-          setError(payload?.error || "Failed to load dashboard data");
-          return;
-        }
-
-        const dashboardData = (await res.json()) as DashboardData;
-        setData(dashboardData);
-      } catch {
-        setError("Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
+      const dashboardData = (await res.json()) as DashboardData;
+      setData(dashboardData);
+    } catch {
+      setError("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  const handleSubmitClaim = async () => {
+    if (!data?.worker) return;
+    setClaimSubmitting(true);
+    setClaimError(null);
+    setClaimSuccess(null);
+
+    try {
+      const res = await fetch("/api/claims", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          worker_id: data.worker.id,
+          trigger_type: claimForm.trigger_type,
+          duration_minutes: claimForm.duration_minutes,
+          description: claimForm.description || undefined,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        setClaimError(result.error || "Failed to file claim");
+        return;
+      }
+
+      setClaimSuccess(`Claim filed successfully! Amount: ₹${result.claim.amount}`);
+      setClaimForm({ trigger_type: "rainfall", duration_minutes: 60, description: "" });
+
+      // Refresh dashboard data
+      await fetchDashboardData();
+
+      // Auto-close modal after 2 seconds
+      setTimeout(() => {
+        setShowClaimModal(false);
+        setClaimSuccess(null);
+      }, 2000);
+    } catch {
+      setClaimError("Network error. Please try again.");
+    } finally {
+      setClaimSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -354,7 +408,20 @@ export default function DashboardPage() {
           <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
             <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
               <h3 className="font-semibold text-zinc-900 dark:text-white">Recent Claims</h3>
-              <span className="text-sm text-zinc-500">{claims.length} total</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-zinc-500">{claims.length} total</span>
+                {subscription && (
+                  <button
+                    onClick={() => { setShowClaimModal(true); setClaimError(null); setClaimSuccess(null); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    File Claim
+                  </button>
+                )}
+              </div>
             </div>
             <div className="divide-y divide-zinc-200 dark:divide-zinc-800 max-h-80 overflow-y-auto">
               {claims.length === 0 ? (
@@ -514,6 +581,139 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Manual Claim Modal */}
+        {showClaimModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 w-full max-w-md shadow-xl">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">File Manual Claim</h3>
+                <button
+                  onClick={() => setShowClaimModal(false)}
+                  className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 space-y-4">
+                {/* Success Message */}
+                {claimSuccess && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm font-medium">
+                    ✅ {claimSuccess}
+                  </div>
+                )}
+
+                {/* Error Message */}
+                {claimError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+                    ⚠️ {claimError}
+                  </div>
+                )}
+
+                {/* Trigger Type */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                    Disruption Type
+                  </label>
+                  <select
+                    value={claimForm.trigger_type}
+                    onChange={(e) => setClaimForm({ ...claimForm, trigger_type: e.target.value as TriggerType })}
+                    className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Object.entries(TRIGGER_INFO).map(([key, info]) => (
+                      <option key={key} value={key}>
+                        {info.icon} {info.name}
+                      </option>
+                    ))}
+                  </select>
+                  {planConfig && !planConfig.triggers.includes(claimForm.trigger_type) && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      ⚠️ Not covered by your {planConfig.name} plan
+                    </p>
+                  )}
+                </div>
+
+                {/* Duration */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                    Duration: {claimForm.duration_minutes} minutes
+                  </label>
+                  <input
+                    type="range"
+                    min={30}
+                    max={480}
+                    step={30}
+                    value={claimForm.duration_minutes}
+                    onChange={(e) => setClaimForm({ ...claimForm, duration_minutes: parseInt(e.target.value) })}
+                    className="w-full accent-blue-600"
+                  />
+                  <div className="flex justify-between text-xs text-zinc-400 mt-1">
+                    <span>30 min</span>
+                    <span>8 hrs</span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                    Description (optional)
+                  </label>
+                  <textarea
+                    value={claimForm.description}
+                    onChange={(e) => setClaimForm({ ...claimForm, description: e.target.value })}
+                    placeholder="Describe what happened..."
+                    rows={2}
+                    className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  />
+                </div>
+
+                {/* Estimated Payout */}
+                {planConfig && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-blue-700 dark:text-blue-400">Estimated Payout</span>
+                      <span className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                        {formatCurrency(Math.round(planConfig.hourly_payout * (claimForm.duration_minutes / 60) * 100) / 100)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-blue-500 dark:text-blue-500 mt-1">
+                      {formatCurrency(planConfig.hourly_payout)}/hr × {(claimForm.duration_minutes / 60).toFixed(1)} hrs
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-5 border-t border-zinc-200 dark:border-zinc-800 flex gap-3">
+                <button
+                  onClick={() => setShowClaimModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitClaim}
+                  disabled={claimSubmitting || !!claimSuccess}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
+                >
+                  {claimSubmitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                      Filing...
+                    </span>
+                  ) : (
+                    "Submit Claim"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

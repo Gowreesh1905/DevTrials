@@ -1,0 +1,11 @@
+id,name,city,city_tier,flood_12m,heat_12m,strike_freq,congestion
+z-andheri,Andheri West,Mumbai,1,6,8,0.05,0.8
+z-bandra,Bandra,Mumbai,1,4,5,0.03,0.75
+z-powai,Powai,Mumbai,1,3,4,0.02,0.6
+z-cp,Connaught Place,Delhi,1,5,12,0.1,0.85
+z-gurgaon,Gurgaon Sec 29,Gurgaon,1,7,10,0.06,0.7
+z-koramangala,Koramangala,Bengaluru,1,3,3,0.02,0.65
+z-indiranagar,Indiranagar,Bengaluru,1,2,2,0.01,0.55
+z-mysuru,Mysuru Central,Mysuru,2,1,1,0.01,0.35
+z-jaipur,Jaipur MI Road,Jaipur,2,2,9,0.04,0.45
+z-lucknow,Lucknow Hazratganj,Lucknow,2,1,6,0.03,0.4
