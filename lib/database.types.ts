@@ -248,6 +248,28 @@ export interface AuditLog {
   user_agent: string | null;
 }
 
+export interface ChatFaq {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  language: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatLog {
+  id: string;
+  worker_id: string;
+  session_id: string;
+  user_message: string;
+  bot_response: string | null;
+  query_type: string;
+  language: string;
+  timestamp: string;
+}
+
 // ============================================================================
 // INSERT TYPES (for creating new records)
 // ============================================================================
