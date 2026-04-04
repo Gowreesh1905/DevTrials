@@ -6,11 +6,11 @@
 
 ## Problem Addressed
 
-Q-commerce delivery workers (Zepto, Blinkit, Swiggy Instamart) operate on 10-minute delivery SLAs across India's metro cities. A single weather disruption or curfew can collapse an entire work slot — and there is no safety net.
+Q-commerce delivery workers (Zepto, Blinkit, Swiggy Instamart) operate on 10-minute delivery SLAs across India's metro cities. A single weather disruption or curfew can collapse an entire work slot — with no safety net.
 
-Existing insurance products are too slow, too complex, and too expensive for daily-wage gig workers. Workers lose ₹200–500 per disruption event with zero recourse. SwiftShield solves this with automated, parametric income protection: when a trigger event is detected in a worker's zone, the system validates, approves, and pays out — in minutes, not days, and without any manual claim filing.
+Existing insurance products are too slow, too complex, and too expensive for daily-wage gig workers. Workers lose ₹200–500 per disruption event with zero recourse. SwiftShield solves this with automated, **parametric income protection**: when a trigger event is detected in a worker's zone, the system validates, approves, and pays out — in minutes, not days, and without any manual claim filing.
 
-**Target persona:** Zepto, Blinkit, and Swiggy Instamart delivery partners, primarily in metro cities (Mumbai, Delhi NCR, Bengaluru, Hyderabad), earning ₹400–800/day, working across all hours including late nights.
+**Target persona:** Zepto, Blinkit, and Swiggy Instamart delivery partners, primarily in metro cities (Mumbai, Delhi NCR, Bengaluru, Hyderabad), earning ₹400–800/day.
 
 ---
 
@@ -18,74 +18,224 @@ Existing insurance products are too slow, too complex, and too expensive for dai
 
 Ramesh is a Blinkit delivery partner in Bengaluru's Koramangala zone. He earns around ₹600/day on a good shift and has the Shield plan active for the week (₹59 premium).
 
-At 8:40 PM on a Tuesday, heavy rainfall crosses the 15 mm/hr threshold in his zone. SwiftShield's trigger engine detects the alert within 10 minutes. Because Ramesh was already on-duty when the alert fired, the system automatically generates a pre-filled claim draft and surfaces a single confirmation prompt on his dashboard: *"We detected a heavy rain alert in your zone. Confirm impact to receive payout."*
+At 8:40 PM on a Tuesday, heavy rainfall crosses the 15 mm/hr threshold in his zone. SwiftShield's trigger engine detects the alert within 10 minutes. Because Ramesh was already on-duty, the system automatically generates a pre-filled claim draft and surfaces a single confirmation prompt:
 
-Ramesh taps confirm. The 4-layer fraud check runs in the background — GPS zone match passes, Blinkit session proof confirms he was active before the trigger, no cooling window violation, and his ML anomaly score is low. The claim is auto-approved. Within 30 minutes of the trigger, ₹85 is credited to his UPI-linked account and he receives an SMS confirmation.
+> *"We detected a heavy rain alert in your zone. Confirm impact to receive payout."*
 
-Ramesh did not file a claim. He did not read a policy document. He did not call anyone. The system did it for him. The system cares for him
+Ramesh taps confirm. The 4-layer fraud check runs in the background — GPS zone match passes, Blinkit session proof confirms he was active before the trigger, no cooling window violation, and his ML anomaly score is low. The claim is auto-approved. Within 30 minutes, ₹85 is credited to his UPI-linked account and he receives an SMS confirmation.
+
+**Ramesh did not file a claim. He did not read a policy document. He did not call anyone. The system did it for him.**
 
 ---
 
 ## Platform Choice: Web App
 
-SwiftShield is built as a **web application** (Next.js) rather than a mobile app. This choice is deliberate:
+SwiftShield is built as a **web application** (Next.js) rather than a native mobile app. This choice is deliberate:
 
 - Workers access the dashboard from any device (smartphone browser, shared device) without requiring an app install
-- Web allows rapid iteration during the hackathon without native build overhead
-- Progressive Web App (PWA) capabilities give a near-native feel on mobile
+- Web allows rapid iteration without native build overhead
+- Progressive Web App (PWA) capabilities give a near-native mobile feel
 - Admin/insurer dashboard is better suited to a web interface
 
 ---
 
 ## Insurance Policy
 
-### Coverage Scope
+### 1. Coverage Scope
 
-SwiftShield protects **income lost during qualifying external disruptions only.**
-It does not cover health, life, accidents, or vehicle repair. Zero ambiguity.
+SwiftShield provides **AI-powered parametric income protection** for Q-commerce delivery workers (Blinkit, Zepto, Instamart).
 
-### Weekly Plan Tiers
-
-| Plan | Premium | Weekly Cap | Triggers Covered | Payout Rate | Claim Wait |
-|---|---|---|---|---|---|
-| **Starter** | ₹29 / week | ₹500 | Heavy rain + flood only | ₹70/hr, max 4 hrs/day | 2 hrs post-trigger |
-| **Shield** | ₹59 / week | ₹1,200 | All 4 weather + curfew | ₹85/hr, max 6 hrs/day | 1 hr post-trigger |
-| **Pro** | ₹99 / week | ₹2,000 | All 4 weather + curfew + platform outage | ₹100/hr, max 8 hrs/day | 30 min post-trigger |
-
-All tiers are priced below a worker's daily tip income to maximise adoption. Premiums recalculate every Sunday.
-
-### Parametric Triggers — 6 Defined Events
-
-| Trigger | Condition | Data Source | Payout | Access |
-|---|---|---|---|---|
-| **T1 · Heavy Rainfall** | Rainfall > 15 mm/hr | IMD API | ₹85/hr lost | Standard |
-| **T2 · Extreme Heat** | Temp > 42°C for 3+ consecutive hours | OpenWeatherMap API | ₹70/hr lost | Standard |
-| **T3 · Flash Flood / Waterlogging** | Flood sensor + GPS zone match | Flood sensor feed | ₹100/hr lost | Standard |
-| **T4 · Severe Cold / Dense Fog** | Visibility < 50m or temp < 5°C | OpenWeatherMap API | ₹70/hr lost | Standard |
-| **T5 · Curfew / Civil Strike** | Govt. advisory API + GPS zone blockage confirmed by Zepto, Blinkit & Swiggy Instamart APIs | 
-| **T6 · Platform Outage / App Downtime** | Delivery platform services unavailable > 30 mins (order API failure rate > threshold) | Platform status APIs / simulated logs | ₹90/hr lost | **Pro Plan Only** |
-
-> **Note on T6 (Pro Only):** In the demo, T6 uses simulated platform status logs and synthetic order API failure rate data. In production, this trigger would be validated through public platform status pages (e.g., status.blinkit.com), order API failure rate monitoring as a proxy, and cross-worker signal correlation — if >30% of active workers in a zone stop receiving orders simultaneously, that constitutes evidence of a platform disruption independent of any partner API access.
-
-**Payout formula:** `payout = hourly_rate × eligible_hours` subject to waiting period, daily hour cap, and weekly coverage cap.
+✔ Covers: Income loss due to external disruptions
+❌ Does NOT cover: Health, accidents, life insurance, vehicle damage, or personal negligence
 
 ---
 
-## Onboarding Flow
+### 2. Weekly Plan Tiers
 
-SwiftShield's onboarding is designed to take under 2 minutes on a mobile browser, with zero document uploads.
+| Plan | Premium | Coverage | Daily Cap | Triggers | Claim Wait |
+|------|---------|----------|-----------|----------|------------|
+| **Starter** | ₹29/week | 50% income loss | ₹500 | Rain, Heat | 2 hrs |
+| **Shield** | ₹59/week | 70% income loss | ₹1,200 | Weather + Curfew | 1 hr |
+| **Pro** | ₹99/week | 90% income loss | ₹2,000 | All + Platform Outage | 30 min |
 
-**Step 1 — Platform selection:** Worker selects their platform (Zepto or Blinkit) on the landing screen. This determines which partner API adapter is used for session validation.
+---
 
-**Step 2 — Phone OTP login:** Worker enters their registered mobile number. A 6-digit OTP is sent (Supabase Auth + SMS simulation in demo). No password, no email.
+### 3. Parametric Triggers
 
-**Step 3 — Zone & vehicle capture:** Worker enters their primary delivery zone (pin code) and vehicle type (2-wheeler / e-bike). These two fields directly feed the premium calculation model.
+| ID | Trigger | Condition | Data Source | Payout |
+|----|---------|-----------|-------------|--------|
+| T1 | Heavy Rainfall | Rainfall > 15 mm/hr | IMD API | ₹85/hr lost |
+| T2 | Extreme Heat | Temp > 42°C for 3+ consecutive hours | OpenWeatherMap | ₹70/hr lost |
+| T3 | Flash Flood / Waterlogging | Flood sensor + GPS zone match | Flood sensor feed | ₹100/hr lost |
+| T4 | Severe Cold / Dense Fog | Visibility < 50m or temp < 5°C | OpenWeatherMap | ₹70/hr lost |
+| T5 | Curfew / Civil Strike | Govt. advisory API + GPS zone blockage confirmed by platform APIs | Govt. advisory + platform APIs | ₹90/hr lost |
+| T6 | Platform Outage *(Pro only)* | Delivery platform unavailable > 30 mins (order API failure rate > threshold) | Platform status APIs / simulated logs | ₹90/hr lost |
 
-**Step 4 — Plan selection:** The system displays the three plan tiers with the worker's calculated weekly premium for each, based on their zone's risk profile. The top 3 risk factors driving the premium are shown in plain language (e.g., *"Your zone has high monsoon flood risk this week"*).
+> **Note on T6 (Pro Only):** In the demo, T6 uses simulated platform status logs and synthetic order API failure rate data. In production, this would be validated through public platform status pages (e.g., status.blinkit.com), order API failure rate monitoring, and cross-worker signal correlation — if >30% of active workers in a zone stop receiving orders simultaneously, that constitutes evidence of a platform disruption.
 
-**Step 5 — UPI linking:** Worker links their UPI ID for payouts. This is the only financial detail collected.
+---
 
-**Step 6 — First week activation:** Worker confirms their chosen plan. The first week's premium is deducted and coverage begins immediately.
+### 4. Payout Calculation
+
+Payout amounts are dynamically calculated using the following AI inputs:
+
+- Worker earnings history
+- Time slot demand (breakfast / lunch / dinner)
+- Location-based order density
+- Platform activity at the time of disruption
+
+---
+
+### 5. Eligibility Criteria
+
+To receive a payout, the worker must:
+
+- Be **active** (logged into platform) at the time of disruption
+- Be **present in the affected zone**
+- Be **available for orders**
+- Pass all **fraud validation checks**
+
+---
+
+### 6. Standard Exclusions
+
+The following are **not covered**: war, terrorism, pandemic, intentional misuse, and personal unavailability.
+
+---
+
+### 7. Claim Process
+
+- Fully **automated** — no manual filing required
+- Flow: Trigger detected → AI validation → Instant UPI payout
+- Worker receives SMS confirmation on payout
+
+---
+
+### 8. Claim Rejection Conditions
+
+Claims will be rejected if:
+
+- Worker was not active during the disruption
+- Location mismatch is detected
+- Fraud signals are triggered
+- Duplicate claim is submitted for the same event
+
+---
+
+### 9. Coverage Limits
+
+- Daily payout is capped per plan (see plan tiers above)
+- Weekly max payout = 3× the daily cap
+
+---
+
+### 10. Pause + Credit Wallet
+
+SwiftShield offers a flexible wallet system tailored for gig workers:
+
+- Workers can **pause their policy anytime** (except during an active claim window or disruption)
+- **Unused premium** is converted into wallet credit
+- Wallet balance can be used toward **future premium payments only** (non-withdrawable)
+
+**Example:**
+- Weekly premium: ₹100 | Used for 3 days → 4 days unused
+- ₹60 credited to wallet
+- Next week's premium: ₹90 → worker pays only ₹30 from wallet
+
+---
+
+## Fraud Detection & Validation Framework
+
+SwiftShield uses a **multi-layer intelligent fraud detection system** to ensure payouts are made only to genuine, active workers.
+
+### 4-Layer Claim Approval System
+
+Every claim must pass all four layers before auto-approval:
+
+| Layer | Validation |
+|-------|-----------|
+| **Layer 1** | GPS zone polygon match — worker within 500m of disruption zone boundary |
+| **Layer 2** | Platform activity validation — Zepto, Blinkit, or Swiggy Instamart APIs must confirm an active session existed before the trigger fired |
+| **Layer 3** | Presence before disruption — worker must have been in the zone before the alert, preventing entry after trigger |
+| **Layer 4** | ML anomaly score — claim frequency vs. pin-code peer group (Isolation Forest model) |
+
+### Detection Capabilities
+
+| Signal | Genuine Worker | Suspicious Behavior |
+|--------|---------------|---------------------|
+| Movement | Continuous, realistic | Static or impossible speed jumps |
+| Activity | Active orders | No real order activity |
+| Timing | Present before event | Appears only after trigger |
+| Claim frequency | Normal for zone | Burst claims or repeated max claims |
+
+### Fraud Ring Detection
+
+Coordinated attacks are identified by:
+
+- Multiple workers filing near-identical claims (same zone, time window, duration)
+- Sudden claim spikes across a zone
+- Cluster analysis on behavioral features
+
+**Liquidity circuit breaker:** During a detected burst, payouts in the affected zone are temporarily queued (not rejected) while fraud analysis runs. Genuine workers' claims are preserved and paid after validation.
+
+### Fairness for Honest Workers
+
+- **Medium-risk claims** → soft-hold (not outright rejection)
+- **Step-up verification**: worker keeps location active for 5–10 minutes, or taps a one-tap live check-in
+- Claims released after verification passes
+
+---
+
+## Advanced Anti-Spoofing & Adversarial Defense
+
+SwiftShield is designed to handle sophisticated fraud attempts such as **GPS spoofing and coordinated ring attacks** that standard single-signal systems cannot catch.
+
+### Multi-Dimensional Signal Validation
+
+Fraud defense goes well beyond GPS. Every claim is evaluated across multiple independent data dimensions:
+
+| Signal Category | What's Checked |
+|----------------|----------------|
+| **Movement trajectory** | Anti-teleport check, impossible speed detection, jitter profile analysis |
+| **Network corroboration** | Coarse IP geolocation vs. declared zone/city, ASN and carrier consistency, latency heuristics |
+| **Device integrity** | Mock-location and developer mode flag detection, emulator / rooted device indicators, device fingerprint consistency across claims |
+| **Platform activity proofs** | On-duty status from Zepto / Blinkit / Instamart API, last delivery timestamp, heartbeat continuity leading up to the event |
+
+A fraudster who successfully spoofs GPS still needs to pass network, device, and platform checks — all independently.
+
+### GPS Spoofing Defense Strategy
+
+A coordinated fraud ring can spoof GPS locations to mass-drain the liquidity pool. SwiftShield counters this by requiring **all 4 fraud layers to pass** before any auto-approval is issued:
+
+| Layer | Check |
+|-------|-------|
+| **Layer 1** | GPS zone polygon match — worker within 500m of disruption zone boundary |
+| **Layer 2** | Multi-platform session validation — Zepto, Blinkit, and/or Swiggy Instamart APIs must confirm an active session existed *before* the trigger fired |
+| **Layer 3** | 48-hour cooling window — no repeat claims within 48 hrs of last payout |
+| **Layer 4** | ML anomaly score — claim frequency vs. pin-code peer group (Isolation Forest) |
+
+### Duplicate Claim Prevention
+
+- **Idempotency key:** De-duplication by `(workerId, triggerType, disruptionId/time-window)` — the same event cannot generate two payouts for the same worker
+- **48-hour cooling window:** No new claim accepted for 48 hours after any payout to the same worker ID
+- **Cross-worker ring detection:** Many workers filing near-identical claims (same time window, duration, zone) triggers a coordinated fraud alert
+
+### AI-Driven Anomaly Detection
+
+- **Isolation Forest** → detects individual behavioral anomalies without requiring labelled fraud data
+- **Clustering techniques** → identify coordinated fraud groups
+- **Dynamic thresholds** → tighten automatically during suspicious claim spikes in a zone; calibrated per pin-code peer group, not globally, to avoid penalising workers in genuinely high-disruption zones
+
+### Liquidity Protection Mechanism
+
+During a detected ring burst:
+
+1. Payouts for the affected zone are **temporarily queued** (not rejected)
+2. Fraud analysis runs across all queued claims
+3. Genuine workers are paid in full once the burst is resolved
+4. Fraudulent claims are rejected with reason logged
+
+This ensures honest workers are never permanently penalised by the actions of bad actors in their zone.
 
 ---
 
@@ -93,214 +243,107 @@ SwiftShield's onboarding is designed to take under 2 minutes on a mobile browser
 
 ### 1. AI-Powered Risk Assessment
 
-#### 1.1 Dynamic Weekly Premium Engine
+#### Dynamic Weekly Premium Engine
 
-Premiums are not static — they recalculate every Sunday using an ML model.
+Premiums recalculate every Sunday using a **Gradient Boosting (XGBoost)** model.
 
-**Inputs to the pricing engine:**
-- Worker's operating zone flood and heat history
-- Upcoming 7-day weather forecast risk (from OpenWeatherMap)
-- Worker's 4-week earnings average (baseline)
-- Historical claim rate in the worker's pin code
-- Seasonal strike/curfew frequency for the city
-- City-tier risk factor (metro vs tier-2)
-- Vehicle type and platform (Zepto / Blinkit / Swiggy Instamart) risk profile
+**Inputs:**
+- Zone flood and heat history
+- 7-day weather forecast risk (OpenWeatherMap)
+- Worker's 4-week earnings average
+- Historical claim rate by pin code
+- Seasonal strike/curfew frequency
+- City-tier risk factor (metro vs. tier-2)
+- Vehicle type and platform risk profile
 
 **Outputs:**
-- `weeklyPremium` (₹) — the amount charged for the coming week
-- Human-readable explanation of the top 3 factors that drove the premium
-- Premium change delta from previous week (with fairness cap on sudden spikes)
+- `weeklyPremium` (₹)
+- Human-readable explanation of the top 3 pricing factors
+- Week-on-week premium delta (fairness cap applied to prevent sudden spikes)
 
-**ML model approach:** Premium calculation uses a Gradient Boosting model (XGBoost) trained on zone-level risk features. For new workers with no claims history (cold start), the model falls back to a pin-code peer group prior — the average premium and risk profile of workers in the same zone and platform. This prior is updated as the worker builds their own history over 4 weeks.
+**Cold start:** For new workers with no claim history, the model falls back to a pin-code peer group prior — the average premium and risk profile of workers in the same zone and platform. This prior updates over the worker's first 4 weeks.
 
-**Fairness constraints:**
-- Hard floor and ceiling on weekly premium per tier
-- Week-on-week change is capped to prevent sudden premium spikes
-- All factors and reasoning are shown transparently on the worker dashboard
+#### Persona-Based Weekly Risk Score
 
-#### 1.2 Persona-Based Predictive Risk Score
+Each worker receives a `weeklyRiskScore` (0–100) with a plain-language breakdown:
 
-Each worker receives a `weeklyRiskScore` (0–100) with a breakdown of what's driving it.
-
-**Score components:**
-- **Weather exposure risk** — based on assigned zone + current season
-- **Traffic risk** — based on zone congestion patterns + typical shift timing
-- **Behavior risk** — delivery activity patterns, active hours, delivery volume
-- **Fraud risk** — claim frequency relative to pin-code peer group, past anomaly flags
-
-**ML model approach:** Risk scoring uses a weighted ensemble of rule-based thresholds (weather, zone history) and an Isolation Forest model for behavioral anomaly detection. Isolation Forest is well-suited here because it does not require labelled fraud data — it identifies workers whose claim and activity patterns are statistically unusual relative to their peer group, without needing a historical fraud dataset to train on.
-
-**Dashboard display:** Top 3 risk drivers are shown to the worker in plain language (e.g., "Your zone has high monsoon flood risk this week"). This drives transparency and encourages plan upgrades when risk is elevated.
+| Component | Source |
+|-----------|--------|
+| Weather exposure risk | Assigned zone + current season |
+| Traffic risk | Zone congestion patterns + typical shift timing |
+| Behavior risk | Delivery activity patterns, active hours, volume |
+| Fraud risk | Claim frequency vs. pin-code peer group, past anomaly flags |
 
 ---
 
-### 2. Intelligent Fraud Detection
+### 2. Parametric Automation
 
-SwiftShield assumes GPS verification alone is insufficient. Fraud defense is multi-signal, ring-aware, and designed to be fair to honest workers.
+#### Real-Time Trigger Monitoring
 
-#### 2.1 Claim Anomaly Scoring
-
-Every claim is scored by an ML model (`claimRiskScore`, 0–100) before a payout decision is made.
-
-**Anomaly signals evaluated:**
-- Burst claims in a short time window (frequency spike)
-- Repeated "max duration" claims (always claiming the maximum eligible hours)
-- Claiming immediately after every trigger fires (pattern inconsistency)
-- Claim duration inconsistent with actual disruption timeline
-- Payout request unusually high relative to the worker's earnings baseline
-- Claim frequency more than 2σ above pin-code peer group
-
-**Model:** Isolation Forest on behavioral features (claim frequency, duration patterns, payout-to-earnings ratio). Thresholds are calibrated per pin-code peer group, not globally — this prevents penalising workers in genuinely high-disruption zones who legitimately claim more often.
-
-**Adaptive thresholds:** During mass fraud bursts (ring activity), thresholds tighten automatically across the affected zone.
-
-**Decision outcomes:**
-- ✅ **Auto-approve** — low risk score, instant payout
-- ⏳ **Soft-hold / Pending** — medium risk or missing telemetry; step-up verification requested
-- ❌ **Reject** — multiple independent signals indicate spoofing or ring behavior
-
-#### 2.2 Location & Activity Validation (Multi-Signal, Beyond GPS)
-
-**Location integrity checks:**
-- Trajectory plausibility — anti-teleport check, impossible speed detection
-- GPS accuracy and jitter profile analysis
-- "Presence before disruption" — worker must have been in the zone before the alert, not appearing instantly after it fired
-
-**Network corroboration (mocked for demo):**
-- Coarse IP geolocation vs declared zone/city
-- ASN and carrier consistency checks
-- Latency heuristics as rough proximity indicator
-
-**Device/app integrity (simulated):**
-- Mock-location and developer mode flag detection
-- Emulator, rooted, or jailbroken device indicators
-- Device fingerprint consistency across claims
-
-**Platform activity proofs (simulated):**
-- On-duty / online status from Zepto, Blinkit, or Swiggy Instamart platform API
-- Last delivery/order timestamp
-- Heartbeat continuity — not just claim-time location, but activity leading up to the event
-
-#### 2.3 Duplicate Claim Prevention
-
-- **Idempotency key:** De-duplication by `(workerId, triggerType, disruptionId/time-window)` — the same event cannot generate two payouts
-- **48-hour cooling window:** No new claim accepted for 48 hours after any payout to the same worker ID
-- **Cross-worker ring detection:** Many workers filing near-identical claims (same time window, same duration, same zone) triggers coordinated fraud alerts
-
-#### 2.4 Adversarial Defense — GPS Spoofing Strategy
-
-A coordinated fraud ring can GPS-spoof their way into a red-alert zone and mass-drain the liquidity pool. SwiftShield defends against this by requiring **all 4 fraud layers to pass** before auto-approval:
-
-| Layer | Check |
-|---|---|
-| **Layer 1** | GPS zone polygon match — worker within 500m of disruption zone boundary |
-| **Layer 2** | Multi-platform session validation — Zepto, Blinkit, and/or Swiggy Instamart APIs must confirm an active worker session existed before the trigger fired |
-| **Layer 3** | 48-hour cooling window — no repeat claims within 48 hrs of last payout |
-| **Layer 4** | ML anomaly score — claim frequency vs pin-code peer group |
-
-**Liquidity circuit breaker:** During ring burst detection, payouts for the affected zone are temporarily queued (not rejected) while the fraud investigation runs. Honest workers' claims are preserved and paid once the burst is resolved.
-
-**Fair step-up UX for borderline cases:**
-- Soft-hold (not reject) — avoid punishing honest workers during real network outages
-- "Keep location sharing on for 5–10 minutes" (passive verification)
-- One-tap live check-in for medium-risk claims
-
----
-
-### 3. Parametric Automation
-
-#### 3.1 Real-Time Trigger Monitoring
-
-The trigger engine polls all data sources every 10 minutes and evaluates threshold rules per zone.
+The trigger engine polls all data sources **every 10 minutes** and evaluates threshold rules per delivery zone.
 
 **Data sources polled:**
 - IMD API / OpenWeatherMap — rainfall rate, temperature, visibility, fog
 - Flood sensor feed — waterlogging + GPS zone cross-match
 - Government advisory API — curfew and civil strike alerts
 
-**Zone disruption states:**
-- Each delivery zone carries an active disruption status: `start_time`, `severity` (green / amber / red), `end_time`
-- Workers assigned to a zone in red status are eligible for claim initiation
+Each zone carries an active disruption state: `start_time`, `severity` (green / amber / red), `end_time`.
 
-#### 3.2 Automatic Claim Initiation
+#### Automatic Claim Initiation
 
-When a red-alert disruption is detected in a zone, the system automatically:
+When a red-alert disruption is detected, the system automatically:
 1. Identifies all active policyholders in that zone who were on-duty during the trigger window
 2. Generates a pre-filled draft claim (trigger type, time window, estimated lost hours)
-3. Surfaces a confirmation prompt on the worker's dashboard: *"We detected a red alert in your zone. Confirm impact to receive payout."*
+3. Surfaces a confirmation prompt on the worker's dashboard
 
-This eliminates the need for workers to understand claim processes — the system does it for them.
+#### Payout State Machine
 
-#### 3.3 Instant Payout Processing
-
-**Payout state machine:** `pending → approved → processing → paid` (or `rejected` for fraud)
+```
+pending → approved → processing → paid
+                           ↓
+                        rejected (fraud)
+```
 
 - Auto-approved claims: UPI payout initiated via Razorpay sandbox within minutes
-- Worker sees payout reflected on web dashboard immediately
-- SMS notification sent on payout confirmation
-- Rejected claims: reason displayed on dashboard with option to appeal
-
-**Liquidity pool tracking:** Ledger tracks total payouts per zone per day with rate limits to prevent liquidity drain. Circuit breaker pauses zone payouts during ring activity.
+- Dashboard and SMS updated on confirmation
+- Rejected claims: reason displayed with option to appeal
 
 ---
 
-### 4. 💡 Flexible Coverage — Pause + Credit Wallet
-
-SwiftShield introduces a flexible wallet system tailored for gig workers.
-
-#### What it does:
-- Allows workers to **pause their insurance policy anytime**
-- Converts **unused premium into wallet balance**
-- Enables **reuse of balance for future policy purchases**
-
-#### Example:
-- Weekly premium: ₹100  
-- Used for 3 days → 4 days unused  
-- ₹60 credited to wallet  
-- Next week premium ₹90 → worker pays only ₹30 using wallet  
-
-#### Wallet Rules (Fraud Prevention):
-- Wallet credit only from unused coverage
-- Cannot pause during active disruption
-- Cannot claim and pause simultaneously
-- Wallet balance is non-withdrawable (only usable for insurance)
-
----
-
-### 5. Analytics Dashboard
+### 3. Analytics Dashboard
 
 #### Worker View
 - Total income protected this week (₹ amount covered by active claims)
 - Active plan and weekly premium paid
-- Weekly risk score with top 3 drivers in plain language
+- Weekly risk score with top 3 plain-language drivers
 - Claim history — trigger type, payout amount, status, timestamp
 
 #### Admin / Insurer View
 - Zone-level heatmap of active disruptions and claim density
 - Loss ratio per zone (total payouts / total premiums collected)
-- Fraud queue — claims in soft-hold with anomaly scores and flagged signals
-- Predictive analytics: next week's projected claim volume by zone based on weather forecast
-- Liquidity pool health — daily payout burn rate vs pool balance
+- Fraud queue — soft-hold claims with anomaly scores and flagged signals
+- Predictive analytics: next week's projected claim volume by zone (weather-forecast-driven)
+- Liquidity pool health — daily payout burn rate vs. pool balance
 - Ring detection alerts — coordinated claim bursts flagged for manual review
 
 ---
 
-### 6. Integration Capabilities
+## Onboarding Flow
 
-All integrations follow an **adapter pattern** — mock providers are used for the demo, and real providers can be swapped in without changing application logic.
+Designed to take **under 2 minutes on a mobile browser**, with zero document uploads.
 
-| Integration | Provider (Demo) | Real Provider (Production) |
-|---|---|---|
-| Weather data | Mock + OpenWeatherMap free tier | IMD API, OpenWeatherMap paid |
-| Flood/waterlogging | Mock sensor feed | Municipal flood sensor networks |
-| Curfew/civil strike | Mock advisory feed | Government advisory APIs |
-| Platform session proof | Simulated Zepto/Blinkit/Instamart adapter | Zepto Partner API, Blinkit Partner API, Swiggy Instamart Partner API |
-| Payments | Razorpay test/sandbox | Razorpay live, UPI rails |
-| Auth | Supabase Auth + OTP simulation | Supabase Auth + real SMS OTP |
+| Step | Action |
+|------|--------|
+| 1 | **Platform selection** — choose Zepto, Blinkit, or Swiggy Instamart |
+| 2 | **Phone OTP login** — 6-digit OTP, no password or email required |
+| 3 | **Zone & vehicle** — enter delivery pin code and vehicle type (2-wheeler / e-bike) |
+| 4 | **Plan selection** — view personalised weekly premium per tier with top 3 risk drivers explained |
+| 5 | **UPI linking** — link UPI ID for payouts (only financial detail collected) |
+| 6 | **Activation** — confirm plan; first week's premium deducted and coverage begins immediately |
 
 ---
 
-## Workflow — End-to-End Claim Flow
+## End-to-End Claim Flow
 
 ```
 IMD / OpenWeather          Flood Sensor Feed          Govt. Advisory API
@@ -342,7 +385,7 @@ IMD / OpenWeather          Flood Sensor Feed          Govt. Advisory API
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
+|-------|------------|
 | **Frontend** | Next.js + Tailwind CSS |
 | **Backend** | Node.js / Next.js API Routes |
 | **Database** | Supabase (PostgreSQL) |
@@ -355,33 +398,67 @@ IMD / OpenWeather          Flood Sensor Feed          Govt. Advisory API
 
 ---
 
+## Integration Adapters
+
+All integrations follow an **adapter pattern** — mock providers are used in the demo, and real providers can be swapped in without changing application logic.
+
+| Integration | Demo Provider | Production Provider |
+|-------------|--------------|---------------------|
+| Weather data | Mock + OpenWeatherMap free tier | IMD API, OpenWeatherMap paid |
+| Flood / waterlogging | Mock sensor feed | Municipal flood sensor networks |
+| Curfew / civil strike | Mock advisory feed | Government advisory APIs |
+| Platform session proof | Simulated adapter | Zepto, Blinkit, Swiggy Instamart Partner APIs |
+| Payments | Razorpay sandbox | Razorpay live, UPI rails |
+| Auth | Supabase Auth + OTP simulation | Supabase Auth + real SMS OTP |
+
+---
+
 ## Development Plan
 
-| Week | Theme | Focus Areas | Key Deliverable |
-|---|---|---|---|
-| **W1** (Mar 4–10) | Foundation | DB schema, Supabase auth, OTP login, zone/platform data model | Working `/login` route, schema committed |
-| **W2** (Mar 11–20) | Ideation complete | Premium engine (mock ML), trigger engine skeleton, dashboard wireframes, prototype video | README + prototype video submitted by Mar 20 |
-| **W3** (Mar 21–27) | Automation | Trigger polling, mock API adapters (weather, flood, advisory), claim state machine | Live trigger → claim flow demo |
-| **W4** (Mar 28–Apr 4) | Protection | Dynamic premium ML (XGBoost), risk score, Razorpay sandbox payout | End-to-end claim → payout demo |
-| **W5** (Apr 5–11) | Scale | Isolation Forest fraud model, GPS validation, ring detection, circuit breaker | Fraud detection demo with spoofing scenario |
-| **W6** (Apr 12–17) | Polish | Admin dashboard, analytics heatmaps, final pitch deck, 5-min demo video | Final submission package |
+| Week | Theme | Focus | Key Deliverable |
+|------|-------|-------|-----------------|
+| W1 (Mar 4–10) | Foundation | DB schema, Supabase auth, OTP login, zone/platform data model | Working `/login` route, schema committed |
+| W2 (Mar 11–20) | Ideation | Premium engine (mock ML), trigger engine skeleton, dashboard wireframes | README + prototype video by Mar 20 |
+| W3 (Mar 21–27) | Automation | Trigger polling, mock API adapters, claim state machine | Live trigger → claim flow demo |
+| W4 (Mar 28–Apr 4) | Protection | Dynamic premium ML (XGBoost), risk score, Razorpay sandbox payout | End-to-end claim → payout demo |
+| W5 (Apr 5–11) | Scale | Isolation Forest fraud model, GPS validation, ring detection, circuit breaker | Fraud detection demo with spoofing scenario |
+| W6 (Apr 12–17) | Polish | Admin dashboard, analytics heatmaps, final pitch deck, 5-min demo video | Final submission package |
 
 ---
 
 ## Demo Routes
 
 | Route | Description |
-|---|---|
+|-------|-------------|
 | `/login` | Platform selection (Zepto / Blinkit / Swiggy Instamart) + OTP login simulation |
-| `/dashboard` | Worker view — active plan, weekly premium, risk score + drivers, claims, payouts |
+| `/dashboard` | Worker view — active plan, weekly premium, risk score + drivers, claim history, payouts |
 | `/simulate` | Trigger zone disruptions, submit claims, and view fraud validation outcome |
 
+---
+
+## Privacy & Compliance
+
+### Data Collected
+GPS location, IP address, work activity (orders, login time), earnings history, device metadata.
+
+### Data Usage
+Risk scoring, claim validation, fraud detection, and premium calculation.
+
+### Data Sharing
+Data may be shared with insurance providers, platform partners (Blinkit, Zepto, Instamart), and fraud detection systems. **Personal data is never sold.**
+
+### Data Security
+Encrypted storage, secure APIs, and role-based access control.
+
+### User Rights
+Users can request data deletion or opt out (policy becomes inactive on opt-out).
+
+### Compliance Model
+SwiftShield operates as a fully parametric insurance model with no manual claims, transparent payout logic, and weekly pricing aligned with the gig economy.
 
 ---
 
 ## Getting Started
-
-First, run the development server:
 
 ```bash
 npm run dev
@@ -389,8 +466,6 @@ npm run dev
 yarn dev
 # or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
