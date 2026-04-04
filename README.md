@@ -129,13 +129,13 @@ SwiftShield provides **AI-powered parametric income protection** for Q-commerce 
 
 ---
 
-### 2. Weekly Plan Tiers
+## 2. Weekly Plan Tiers
 
 <div align="center">
 
 |  | 🟢 Starter | 🔵 Shield | 🟣 Pro |
 |--|:----------:|:---------:|:------:|
-| **Weekly Premium** | ₹29 | ₹59 | ₹99 |
+| **Weekly Premium** | ₹29–₹49 | ₹59–₹79 | ₹99–₹109 |
 | **Income Coverage** | 50% | 70% | 90% |
 | **Daily Cap** | ₹500 | ₹1,200 | ₹2,000 |
 | **Weekly Max** | ₹1,500 | ₹3,600 | ₹6,000 |
@@ -143,6 +143,32 @@ SwiftShield provides **AI-powered parametric income protection** for Q-commerce 
 | **Claim Wait** | 2 hrs | 1 hr | 30 min |
 
 </div>
+
+---
+
+### 💡 Dynamic Weekly Premiums
+
+Premiums are not fixed—they vary within a range based on an ML-powered risk model.
+
+Each week, the system analyzes:
+- Local weather forecasts  
+- Demand patterns  
+- Historical disruptions  
+
+This ensures fair pricing:
+- Lower risk weeks → lower premiums  
+- Higher risk weeks → slightly higher premiums within the range  
+
+---
+
+### ✨ Smart Pricing (Optional Short Version)
+
+Each week, premiums are dynamically adjusted using machine learning models that assess real-time risk signals (weather, demand, disruptions).
+
+This ensures:
+- Fair pricing  
+- Better protection during high-risk periods  
+- Lower costs when risk is low  
 
 ---
 
