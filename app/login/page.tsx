@@ -3,10 +3,11 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import type { Worker } from "@/lib/database.types";
+import type { Worker, User } from "@/lib/database.types";
 
 type Platform = "blinkit" | "zepto" | "instamart" | null;
-type Step = "platform" | "phone" | "otp";
+type UserRole = "user" | "zonal_admin" | "control_admin";
+type Step = "role" | "admin_role" | "platform" | "phone" | "otp";
 
 // Platform logo components
 const BlinkitLogo = ({ size = 32 }: { size?: number }) => (
@@ -40,8 +41,9 @@ const SwiggyLogo = ({ size = 32 }: { size?: number }) => (
 );
 
 export default function LoginPage() {
+  const [selectedRole, setSelectedRole] = useState<UserRole>("user");
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>(null);
-  const [step, setStep] = useState<Step>("platform");
+  const [step, setStep] = useState<Step>("role");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,7 +51,26 @@ export default function LoginPage() {
   const [otpInfo, setOtpInfo] = useState("");
   const [debugOtp, setDebugOtp] = useState("");
   const [otpSessionId, setOtpSessionId] = useState("");
+  const [user, setUser] = useState<User | null>(null);
   const [worker, setWorker] = useState<Worker | null>(null);
+
+  const handleRoleSelect = (role: "user" | "admin") => {
+    if (role === "admin") {
+      setStep("admin_role");
+    } else {
+      setSelectedRole("user");
+      setStep("platform");
+    }
+  };
+
+  const handleAdminRoleSelect = (role: "zonal_admin" | "control_admin") => {
+    setSelectedRole(role);
+    setStep("phone"); // Admins might not need platform selection, or we can default it.
+    // For now, let's assume admins log in with phone only, or we skip platform for them.
+    if (role === "zonal_admin" || role === "control_admin") {
+      setSelectedPlatform("blinkit"); // Default platform for admin login if needed by API
+    }
+  };
 
   const handlePlatformSelect = (platform: Platform) => {
     setSelectedPlatform(platform);
@@ -62,7 +83,9 @@ export default function LoginPage() {
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPlatform) {
+    
+    // For delivery partners, platform is required
+    if (selectedRole === "user" && !selectedPlatform) {
       setError("Please select a platform to continue");
       return;
     }
@@ -84,6 +107,7 @@ export default function LoginPage() {
         body: JSON.stringify({
           phone: phoneNumber,
           platform: selectedPlatform,
+          role: selectedRole,
         }),
       });
 
@@ -136,7 +160,8 @@ export default function LoginPage() {
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedPlatform) {
+    // For delivery partners, platform is required
+    if (selectedRole === "user" && !selectedPlatform) {
       setError("Platform selection is missing. Please try again.");
       setStep("platform");
       return;
@@ -166,23 +191,48 @@ export default function LoginPage() {
           platform: selectedPlatform,
           otp: otpValue,
           otpSessionId,
+          role: selectedRole,
         }),
       });
 
-      const payload = (await res.json()) as { error?: string; worker?: Worker };
-      if (!res.ok || !payload.worker) {
+      const payload = (await res.json()) as { error?: string; user?: User; worker?: Worker; role?: UserRole };
+      if (!res.ok || !payload.user) {
         setError(payload.error || "OTP verification failed. Please try again.");
         setIsLoading(false);
         return;
       }
 
-      setWorker(payload.worker);
-      localStorage.setItem("workerId", payload.worker.id);
-      localStorage.setItem("userPhone", payload.worker.phone);
-      localStorage.setItem("userPlatform", payload.worker.platform);
+      setUser(payload.user);
+      if (payload.worker) {
+        setWorker(payload.worker);
+      }
+      
+      const userRole = payload.role || payload.user.role;
+      
+      // Store user info in localStorage
+      localStorage.setItem("userId", payload.user.id);
+      localStorage.setItem("userPhone", payload.user.phone);
+      localStorage.setItem("userRole", userRole);
+      
+      // Store worker info if available (for delivery partners)
+      if (payload.worker) {
+        localStorage.setItem("workerId", payload.worker.id);
+        localStorage.setItem("userPlatform", payload.worker.platform);
+      }
+      
+      // Set a cookie for the middleware
+      document.cookie = `user-role=${userRole}; path=/; max-age=3600; SameSite=Strict`;
 
       setIsLoading(false);
-      window.location.href = "/dashboard";
+      
+      // Redirect based on role
+      if (userRole === "zonal_admin") {
+        window.location.href = "/dashboard/zonal";
+      } else if (userRole === "control_admin") {
+        window.location.href = "/dashboard/control";
+      } else {
+        window.location.href = "/dashboard/user";
+      }
     } catch {
       setError("OTP verification failed. Please try again.");
       setIsLoading(false);
@@ -190,7 +240,8 @@ export default function LoginPage() {
   };
 
   const handleResendOtp = async () => {
-    if (!selectedPlatform) {
+    // For delivery partners, platform is required
+    if (selectedRole === "user" && !selectedPlatform) {
       setError("Please select a platform to continue");
       setStep("platform");
       return;
@@ -214,6 +265,7 @@ export default function LoginPage() {
         body: JSON.stringify({
           phone: phoneNumber,
           platform: selectedPlatform,
+          role: selectedRole,
         }),
       });
 
@@ -246,16 +298,21 @@ export default function LoginPage() {
     if (step === "otp") {
       setStep("phone");
       setOtp(["", "", "", "", "", ""]);
-      setOtpInfo("");
-      setDebugOtp("");
-      setOtpSessionId("");
     } else if (step === "phone") {
-      setStep("platform");
-      setPhoneNumber("");
-      setOtpInfo("");
-      setDebugOtp("");
-      setOtpSessionId("");
+      if (selectedRole === "user") {
+        setStep("platform");
+      } else {
+        setStep("admin_role");
+      }
+    } else if (step === "platform") {
+      setStep("role");
+    } else if (step === "admin_role") {
+      setStep("role");
     }
+    
+    setOtpInfo("");
+    setDebugOtp("");
+    setOtpSessionId("");
     setError("");
   };
 
@@ -290,7 +347,7 @@ export default function LoginPage() {
         {/* Main Card */}
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6">
           {/* Back Button */}
-          {step !== "platform" && (
+          {step !== "role" && (
             <button
               onClick={goBack}
               className="flex items-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white mb-4 transition-colors"
@@ -312,18 +369,133 @@ export default function LoginPage() {
             </button>
           )}
 
+          {/* Role Selection Step */}
+          {step === "role" && (
+            <div>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
+                Who are you?
+              </h2>
+              <p className="text-zinc-600 dark:text-zinc-400 mb-6">
+                Select your role to continue
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleRoleSelect("user")}
+                  className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all group"
+                >
+                  <div className="flex items-center">
+                    <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mr-4">
+                      <span className="text-2xl text-blue-600 dark:text-blue-400">🚲</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-zinc-900 dark:text-white">
+                        Delivery Partner
+                      </p>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Login as a driver/partner
+                      </p>
+                    </div>
+                  </div>
+                  <svg className="w-5 h-5 text-zinc-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+
+                <button
+                  onClick={() => handleRoleSelect("admin")}
+                  className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all group"
+                >
+                  <div className="flex items-center">
+                    <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center mr-4">
+                      <span className="text-2xl text-emerald-600 dark:text-emerald-400">🛡️</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-zinc-900 dark:text-white">
+                        Administrator
+                      </p>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Zonal or Control access
+                      </p>
+                    </div>
+                  </div>
+                  <svg className="w-5 h-5 text-zinc-400 group-hover:text-emerald-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Admin Role Selection Step */}
+          {step === "admin_role" && (
+            <div>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
+                Admin Access Level
+              </h2>
+              <p className="text-zinc-600 dark:text-zinc-400 mb-6">
+                Choose your administration role
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleAdminRoleSelect("zonal_admin")}
+                  className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-all group"
+                >
+                  <div className="flex items-center">
+                    <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center mr-4">
+                      <span className="text-2xl">📍</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-zinc-900 dark:text-white">
+                        Zonal Admin
+                      </p>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Manage regional claims
+                      </p>
+                    </div>
+                  </div>
+                  <svg className="w-5 h-5 text-zinc-400 group-hover:text-amber-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+
+                <button
+                  onClick={() => handleAdminRoleSelect("control_admin")}
+                  className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all group"
+                >
+                  <div className="flex items-center">
+                    <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center mr-4">
+                      <span className="text-2xl">⚙️</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-zinc-900 dark:text-white">
+                        Control Admin
+                      </p>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        System-wide policies
+                      </p>
+                    </div>
+                  </div>
+                  <svg className="w-5 h-5 text-zinc-400 group-hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Platform Selection Step */}
           {step === "platform" && (
             <div>
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
-                Welcome, Delivery Partner
+                Select Platform
               </h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-6">
                 Login with your delivery platform account
               </p>
 
               <div className="space-y-3">
-                {/* Blinkit Button */}
                 <button
                   onClick={() => handlePlatformSelect("blinkit")}
                   className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-950/20 transition-all group"
@@ -333,30 +505,14 @@ export default function LoginPage() {
                       <BlinkitLogo size={28} />
                     </div>
                     <div className="text-left">
-                      <p className="font-semibold text-zinc-900 dark:text-white">
-                        Blinkit
-                      </p>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        Continue with Blinkit account
-                      </p>
+                      <p className="font-semibold text-zinc-900 dark:text-white">Blinkit</p>
                     </div>
                   </div>
-                  <svg
-                    className="w-5 h-5 text-zinc-400 group-hover:text-yellow-500 transition-colors"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
+                  <svg className="w-5 h-5 text-zinc-400 group-hover:text-yellow-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
 
-                {/* Zepto Button */}
                 <button
                   onClick={() => handlePlatformSelect("zepto")}
                   className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-all group"
@@ -366,30 +522,14 @@ export default function LoginPage() {
                       <ZeptoLogo size={28} />
                     </div>
                     <div className="text-left">
-                      <p className="font-semibold text-zinc-900 dark:text-white">
-                        Zepto
-                      </p>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        Continue with Zepto account
-                      </p>
+                      <p className="font-semibold text-zinc-900 dark:text-white">Zepto</p>
                     </div>
                   </div>
-                  <svg
-                    className="w-5 h-5 text-zinc-400 group-hover:text-purple-500 transition-colors"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
+                  <svg className="w-5 h-5 text-zinc-400 group-hover:text-purple-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
 
-                {/* Swiggy Instamart Button */}
                 <button
                   onClick={() => handlePlatformSelect("instamart")}
                   className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/20 transition-all group"
@@ -399,26 +539,11 @@ export default function LoginPage() {
                       <SwiggyLogo size={28} />
                     </div>
                     <div className="text-left">
-                      <p className="font-semibold text-zinc-900 dark:text-white">
-                        Swiggy Instamart
-                      </p>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        Continue with Swiggy Instamart account
-                      </p>
+                      <p className="font-semibold text-zinc-900 dark:text-white">Swiggy Instamart</p>
                     </div>
                   </div>
-                  <svg
-                    className="w-5 h-5 text-zinc-400 group-hover:text-orange-500 transition-colors"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
+                  <svg className="w-5 h-5 text-zinc-400 group-hover:text-orange-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
               </div>
@@ -430,21 +555,21 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center mb-4">
                 <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center mr-3 ${selectedPlatform === "blinkit"
-                    ? "bg-yellow-400"
-                    : selectedPlatform === "instamart"
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center mr-3 ${
+                    selectedPlatform === "blinkit"
+                      ? "bg-yellow-400"
+                      : selectedPlatform === "instamart"
                       ? "bg-orange-500"
                       : "bg-purple-600"
-                    }`}
+                  }`}
                 >
                   {selectedPlatform === "blinkit" && <BlinkitLogo size={24} />}
                   {selectedPlatform === "zepto" && <ZeptoLogo size={24} />}
                   {selectedPlatform === "instamart" && <SwiggyLogo size={24} />}
                 </div>
                 <div>
-                  <p className="font-medium text-zinc-900 dark:text-white">
-                    {selectedPlatform === "blinkit" ? "Blinkit" : selectedPlatform === "instamart" ? "Swiggy Instamart" : "Zepto"}{" "}
-                    Account
+                  <p className="font-medium text-zinc-900 dark:text-white uppercase">
+                    {selectedRole.replace("_", " ")} Account
                   </p>
                 </div>
               </div>
@@ -453,7 +578,7 @@ export default function LoginPage() {
                 Enter your phone number
               </h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                We&apos;ll send an OTP to verify your account
+                We'll send an OTP to verify your account
               </p>
 
               <form onSubmit={handlePhoneSubmit}>
@@ -482,34 +607,9 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isLoading || phoneNumber.length !== 10}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-emerald-500 text-white font-medium rounded-xl hover:from-blue-700 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-emerald-500 text-white font-medium rounded-xl hover:from-blue-700 hover:to-emerald-600 transition-all font-semibold"
                 >
-                  {isLoading ? (
-                    <span className="flex items-center justify-center">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-5 w-5 text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                      Sending OTP...
-                    </span>
-                  ) : (
-                    "Get OTP"
-                  )}
+                  {isLoading ? "Sending OTP..." : "Get OTP"}
                 </button>
               </form>
             </div>
@@ -541,67 +641,36 @@ export default function LoginPage() {
                       onChange={(e) => handleOtpChange(index, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(index, e)}
                       className="w-12 h-14 text-center text-xl font-semibold border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      autoFocus={index === 0}
                     />
                   ))}
                 </div>
 
-                {error && (
-                  <p className="mb-4 text-sm text-red-500 text-center">
-                    {error}
-                  </p>
-                )}
-
-                {otpInfo && (
-                  <p className="mb-4 text-sm text-emerald-600 text-center">{otpInfo}</p>
-                )}
-
+                {error && <p className="mb-4 text-sm text-red-500 text-center">{error}</p>}
+                {otpInfo && <p className="mb-4 text-sm text-emerald-600 text-center">{otpInfo}</p>}
                 {debugOtp && (
-                  <p className="mb-4 text-xs text-amber-600 text-center">
-                    Dev OTP (SMS not configured): {debugOtp}
-                  </p>
+                  <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-center">
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mb-1">Development Mode</p>
+                    <p className="text-lg font-bold text-amber-700 dark:text-amber-300 tracking-widest">
+                      OTP: {debugOtp}
+                    </p>
+                  </div>
                 )}
 
                 <button
                   type="submit"
                   disabled={isLoading || otp.join("").length !== 6}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-emerald-500 text-white font-medium rounded-xl hover:from-blue-700 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-emerald-500 text-white font-medium rounded-xl hover:from-blue-700 hover:to-emerald-600 transition-all font-semibold"
                 >
-                  {isLoading ? (
-                    <span className="flex items-center justify-center">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-5 w-5 text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                      Verifying...
-                    </span>
-                  ) : (
-                    "Verify & Login"
-                  )}
+                  {isLoading ? "Verifying..." : "Verify & Login"}
                 </button>
 
                 <button
                   type="button"
                   onClick={handleResendOtp}
                   disabled={isLoading}
-                  className="w-full mt-3 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
+                  className="w-full mt-3 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                 >
-                  Didn&apos;t receive OTP? Resend
+                  Didn't receive OTP? Resend
                 </button>
               </form>
             </div>
@@ -609,59 +678,19 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6">
+        <div className="text-center mt-6 space-y-3">
+          <p className="text-sm text-zinc-600 dark:text-zinc-300">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">Register here</Link>
+          </p>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             By continuing, you agree to our{" "}
-            <Link
-              href="/terms"
-              className="text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link
-              href="/privacy"
-              className="text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Privacy Policy
-            </Link>
+            <Link href="/terms" className="text-blue-600 dark:text-blue-400 hover:underline">Terms of Service</Link> and{" "}
+            <Link href="/privacy" className="text-blue-600 dark:text-blue-400 hover:underline">Privacy Policy</Link>
           </p>
-        </div>
-
-        {/* Trust Badges */}
-        <div className="flex justify-center items-center gap-6 mt-6">
-          <div className="flex items-center text-zinc-400">
-            <svg
-              className="w-5 h-5 mr-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              />
-            </svg>
-            <span className="text-xs">Secure</span>
-          </div>
-          <div className="flex items-center text-zinc-400">
-            <svg
-              className="w-5 h-5 mr-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-              />
-            </svg>
-            <span className="text-xs">IRDAI Registered</span>
-          </div>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+            <Link href="/" className="hover:underline">← Back to Home</Link>
+          </p>
         </div>
       </div>
     </div>

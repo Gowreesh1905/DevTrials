@@ -14,13 +14,24 @@ export type PayoutType = 'claim' | 'bonus' | 'refund' | 'wallet_credit';
 export type VehicleType = 'bike' | 'scooter' | 'bicycle';
 export type SubscriptionStatus = 'active' | 'expired' | 'pending' | 'paused';
 export type DisruptionSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type UserRole = 'user' | 'zonal_admin' | 'control_admin';
 
 // ============================================================================
 // DATABASE ROW TYPES
 // ============================================================================
 
+export interface User {
+  id: string;
+  name: string;
+  phone: string;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Worker {
   id: string;
+  user_id: string;
   auth_user_id: string | null;
   name: string;
   phone: string;
@@ -34,6 +45,7 @@ export interface Worker {
   is_online: boolean;
   last_active_at: string | null;
   upi_id: string | null;
+  role: UserRole;
   fraud_score: number;
   cooling_period_until: string | null;
   created_at: string;
@@ -61,6 +73,14 @@ export interface WorkerWeeklyStats {
   total_claim_amount: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WorkerGlobalStats {
+  total_workers: number;
+  total_claims: number;
+  total_payouts: number;
+  active_subscriptions: number;
+  avg_fraud_score: number;
 }
 
 export interface PlanTierConfig {
@@ -252,6 +272,14 @@ export interface AuditLog {
 // INSERT TYPES (for creating new records)
 // ============================================================================
 
+export type UserInsert = Omit<User, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type UserUpdate = Partial<Omit<User, 'id' | 'created_at'>>;
+
 export type WorkerInsert = Omit<Worker, 'id' | 'created_at' | 'updated_at'> & {
   id?: string;
   created_at?: string;
@@ -324,6 +352,11 @@ export interface DisruptionWithZones extends Disruption {
 export interface Database {
   public: {
     Tables: {
+      users: {
+        Row: User;
+        Insert: UserInsert;
+        Update: UserUpdate;
+      };
       workers: {
         Row: Worker;
         Insert: WorkerInsert;
