@@ -273,20 +273,6 @@ Coordinated attacks are flagged by:
 
 > **⚡ Liquidity Circuit Breaker:** During a burst, payouts are **queued — not rejected** — while fraud analysis runs. Genuine workers' claims are preserved and paid after validation.
 
-### Fairness for Honest Workers
-
-```
-Medium-risk claim detected
-        │
-        ├─→  Soft-hold (NOT outright rejection)
-        │
-        ├─→  Step-up verification requested:
-        │       • Keep location active for 5–10 min
-        │       • OR tap one-tap live check-in
-        │
-        └─→  Claim released after verification passes ✅
-```
-
 ---
 
 ## 🛡️ Advanced Anti-Spoofing & Adversarial Defense
@@ -301,16 +287,6 @@ SwiftShield defends against sophisticated attacks — **GPS spoofing and coordin
 | **Network corroboration** | IP geolocation vs. declared zone · ASN & carrier consistency · Latency heuristics |
 | **Device integrity** | Mock-location flag · Emulator / rooted device detection · Device fingerprint consistency |
 | **Platform activity proofs** | On-duty status from platform API · Last delivery timestamp · Heartbeat continuity pre-event |
-
-> A fraudster who spoofs GPS still needs to pass network, device, and platform checks — **all independently**.
-
-### Duplicate Claim Prevention
-
-| Mechanism | How It Works |
-|-----------|-------------|
-| **Idempotency key** | De-duplication by `(workerId, triggerType, disruptionId)` — same event can't yield two payouts |
-| **48-hr cooling window** | No new claim within 48 hours of last payout |
-| **Ring detection** | Near-identical claims across many workers in same window triggers fraud alert |
 
 ---
 
@@ -339,8 +315,6 @@ Premiums recalculate **every Sunday** using a Gradient Boosting **(XGBoost)** mo
 - Top 3 plain-language explanations of pricing factors
 - Week-on-week delta with **fairness cap** (no sudden spikes)
 
-> **Cold start:** New workers fall back to a pin-code peer group prior — updated as the worker builds 4 weeks of history.
-
 #### Persona-Based Weekly Risk Score
 
 Each worker receives a `weeklyRiskScore` (0–100):
@@ -365,20 +339,6 @@ The trigger engine polls all data sources **every 10 minutes**.
 - `Flood sensor feed` — waterlogging + GPS zone cross-match
 - `Government advisory API` — curfew and civil strike alerts
 
-Each zone carries an active disruption state:
-
-```
-Zone Status: { start_time, severity: green | amber | red, end_time }
-```
-
-#### Automatic Claim Initiation
-
-When a **red-alert** disruption is detected, the system automatically:
-
-1. Identifies all active policyholders in that zone on-duty during the trigger window
-2. Generates a pre-filled draft claim (trigger type, time window, estimated lost hours)
-3. Surfaces a one-tap confirmation prompt on the worker's dashboard
-
 ---
 
 ### 3. Analytics Dashboard
@@ -391,20 +351,18 @@ When a **red-alert** disruption is detected, the system automatically:
 
 - Total income protected this week (₹)
 - Active plan and weekly premium paid
-- Weekly risk score with top 3 plain-language drivers
-- Claim history — trigger type · payout · status · timestamp
+- Weekly risk score with top 3 drivers
+- Claim history · payout · status
 
 </td>
 <td width="50%" valign="top">
 
 **🏢 Admin / Insurer View**
 
-- Zone-level disruption heatmap + claim density
-- Loss ratio per zone (payouts ÷ premiums)
-- Fraud queue with anomaly scores + flagged signals
-- Predictive claim volume (weather-driven)
-- Liquidity pool health — burn rate vs pool balance
-- Ring detection alerts for manual review
+- Zone-level disruption heatmap
+- Fraud queue + anomaly scores
+- Liquidity pool health
+- Ring detection alerts
 
 </td>
 </tr>
@@ -424,22 +382,16 @@ SwiftShield operates a **two-tier admin model**. Zonal Admins manage operations 
 *Zone-scoped operations*
 
 **📍 Claim Management**
-- Review auto-triggered claims within assigned zone
-- Approve, reject, or flag claims based on validation checks
+Review auto-triggered claims; approve or flag based on validation.
 
 **🧠 Fraud Monitoring**
-- Investigate AI-flagged suspicious claims
-- Detect GPS spoofing, duplicate claims, abnormal patterns
+Investigate flagged claims; detect spoofing and abnormal patterns.
 
 **📊 Zone Analytics**
-- Track claim frequency and fraud rate within zone
-- Monitor loss ratios
+Track claim frequency and loss ratios within assigned zone.
 
 **🔐 Access**
-```
-Zone-specific data only
-Cannot modify policies or pricing
-```
+`Zone-specific data only`
 
 </td>
 <td width="50%" valign="top">
@@ -448,26 +400,19 @@ Cannot modify policies or pricing
 *Platform-wide authority*
 
 **🧾 Policy Management**
-- Create and update T&C and coverage rules
-- Define eligibility criteria
+Update T&C, coverage rules, and eligibility criteria.
 
-**💰 Pricing & Risk Strategy**
-- Set and update weekly premium rates
-- Adjust payout limits and coverage tiers
+**💰 Pricing Strategy**
+Set and update weekly premiums and payout limits system-wide.
 
-**🧠 AI & Fraud Governance**
-- Configure fraud detection rules and thresholds
-- Manage risk scoring models
+**🧠 AI Governance**
+Configure fraud thresholds and update risk scoring models.
 
 **📊 Global Analytics**
-- Monitor total claims and fraud trends
-- Predict future risks and disruptions
+Monitor total claims, fraud trends, and revenue at scale.
 
 **🔐 Access**
-```
-Full access — all zones and data
-Modify system-wide configurations
-```
+`Full platform access`
 
 </td>
 </tr>
@@ -477,25 +422,17 @@ Modify system-wide configurations
 
 ## 🚀 Onboarding Flow
 
-> Designed to take **under 2 minutes** on a mobile browser. Zero document uploads.
-
 ```
 Step 1 ──► Platform Selection
-           Choose Zepto · Blinkit · Swiggy Instamart
+           Zepto · Blinkit · Swiggy Instamart
            │
 Step 2 ──► Phone OTP Login
-           6-digit OTP · No password · No email
+           6-digit OTP · No password
            │
 Step 3 ──► Zone & Vehicle
-           Delivery pin code + vehicle type
+           Pin code + vehicle type
            │
-Step 4 ──► Plan Selection
-           Personalised weekly premium per tier shown
-           │
-Step 5 ──► UPI Linking
-           Only financial detail collected
-           │
-Step 6 ──► Activation ✅
+Step 4 ──► Activation ✅
            Coverage begins immediately
 ```
 
@@ -517,7 +454,6 @@ IMD / OpenWeather       Flood Sensor Feed       Govt. Advisory API
                     ┌───────────▼────────────┐
                     │   Fraud Detection      │
                     │   4-layer check        │
-                    │   (all 4 must pass)    │
                     └──────┬─────────┬───────┘
                          Pass      Flag
                   ┌───────▼───┐  ┌──▼──────────────┐
@@ -528,11 +464,6 @@ IMD / OpenWeather       Flood Sensor Feed       Govt. Advisory API
                   ┌───────▼────────────┐
                   │  Instant Payout    │
                   │  UPI / Razorpay    │
-                  │  Dashboard + SMS   │
-                  └───────────┬────────┘
-                              │
-                  ┌───────────▼────────┐
-                  │  Analytics         │
                   └────────────────────┘
 ```
 
@@ -603,6 +534,19 @@ ml-service/
 
 ---
 
+## 📅 Development Plan
+
+| Week | Theme | Focus Areas |
+|:----:|:-----:|-------------|
+| **W1** Mar 4–10 | 🏗️ Foundation | DB schema · Supabase auth · OTP login |
+| **W2** Mar 11–20| 💡 Ideation | Premium engine · trigger skeleton · dashboard |
+| **W3** Mar 21–27| ⚙️ Automation | Trigger polling · API adapters · claim state machine |
+| **W4** Mar 28–Apr 4| 🛡️ Protection | Dynamic premium ML · risk score · Razorpay payout |
+| **W5** Apr 5–11 | 📈 Scale | Isolation Forest · GPS validation · ring detection |
+| **W6** Apr 12–17| ✨ Polish | Admin dashboard · heatmaps · pitch deck |
+
+---
+
 ## 🗺️ Demo Routes
 
 | Route | Description |
@@ -621,8 +565,8 @@ ml-service/
 
 **Data Collected**
 - GPS location & IP address
-- Work activity (orders, login time)
-- Earnings history & Device metadata
+- Work activity & earnings history
+- Device metadata
 
 </td>
 <td width="50%" valign="top">
@@ -634,8 +578,6 @@ ml-service/
 </td>
 </tr>
 </table>
-
-**Data Security:** Encrypted storage · Secure APIs · Role-based access control
 
 ---
 
