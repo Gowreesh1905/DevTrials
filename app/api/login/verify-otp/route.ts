@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const platform = payload.platform;
     const otp = payload.otp?.trim();
     const otpSessionId = payload.otpSessionId?.trim();
-    const requestedRole = payload.role || "user";
+    const requestedRole = payload.role || "worker";
 
     if (!phone || !PHONE_REGEX.test(phone)) {
       return NextResponse.json(
@@ -65,15 +65,20 @@ export async function POST(request: Request) {
     const typedUser = user as User;
 
     // Role Validation - check if user has the requested role access
-    if (requestedRole !== "user" && typedUser.role !== requestedRole) {
+    if (typedUser.role !== requestedRole) {
+      if (requestedRole === "worker") {
+        return NextResponse.json({ 
+          error: "This account is registered as an administrator. Please use the admin login." 
+        }, { status: 403 });
+      }
       return NextResponse.json({ 
         error: `Unauthorized: Your account does not have the ${requestedRole.replace('_', ' ')} role.` 
       }, { status: 403 });
     }
 
-    // For delivery partners (role='user'), validate platform and get worker data
+    // For delivery partners (role='worker'), validate platform and get worker data
     let worker: Worker | null = null;
-    if (typedUser.role === "user") {
+    if (typedUser.role === "worker") {
       if (!platform || !PLATFORM_VALUES.includes(platform)) {
         return NextResponse.json({ error: "Please select a valid platform" }, { status: 400 });
       }

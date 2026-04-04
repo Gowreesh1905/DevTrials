@@ -110,7 +110,6 @@ export async function updateWorkerLocation(
     .update({
       current_lat: lat,
       current_lng: lng,
-      last_active_at: new Date().toISOString(),
     })
     .eq('id', id);
 

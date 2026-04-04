@@ -7,9 +7,9 @@ interface RegisterPayload {
   name?: string;
   phone?: string;
   platform?: Platform;
-  city?: string;
+  city?: string;  // Stored via delivery zone assignment
   role?: UserRole;
-  upiId?: string;
+  upiId?: string;  // Note: Currently not in DB schema - for future implementation
   vehicleType?: VehicleType;
   vehicleRegistration?: string;
   otp?: string;
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const phone = payload.phone?.trim();
     const platform = payload.platform;
     const city = payload.city?.trim();
-    const role = payload.role || 'user'; // Default to user (delivery partner)
+    const role = payload.role || 'worker'; // Default to worker (delivery partner)
     const upiId = payload.upiId?.trim() || null;
     const vehicleType = payload.vehicleType;
     const vehicleRegistration = payload.vehicleRegistration?.trim() || null;
@@ -43,10 +43,10 @@ export async function POST(request: Request) {
     }
 
     // Role-specific validation
-    if (role === 'user') {
-      if (!platform || !city || !vehicleType) {
+    if (role === 'worker') {
+      if (!platform || !vehicleType) {
         return NextResponse.json(
-          { error: "Platform, city, and vehicle details are required for delivery partners" },
+          { error: "Platform and vehicle details are required for delivery partners" },
           { status: 400 }
         );
       }
@@ -117,18 +117,33 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. If role is 'user', create Partner specifics in workers table
-    if (role === 'user' && platform && city && vehicleType) {
+    // 2. If role is 'worker', create Partner specifics in workers table
+    if (role === 'worker' && platform && vehicleType) {
+      // Find or create delivery zone for the city (if city provided)
+      let assignedZoneId: string | null = null;
+      if (city) {
+        const { data: existingZone } = await admin
+          .from("delivery_zones")
+          .select("id")
+          .ilike("city", city)
+          .maybeSingle();
+        
+        if (existingZone) {
+          assignedZoneId = existingZone.id;
+        }
+      }
+
       const { data: worker, error: workerCreateError } = await admin
         .from("workers")
         .insert({
           user_id: user.id,
           name,
-          phone,
+          phone, // Store phone in workers for quick lookup
           platform,
-          city,
+          city: city || null,
           upi_id: upiId,
-        } as any)
+          assigned_zone_id: assignedZoneId,
+        })
         .select("*")
         .single();
 

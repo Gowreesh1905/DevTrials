@@ -36,8 +36,8 @@ export default function RegisterPage() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<UserRole>("user");
-  const [roleGroup, setRoleGroup] = useState<"user" | "admin">("user");
+  const [role, setRole] = useState<UserRole>("worker");
+  const [roleGroup, setRoleGroup] = useState<"worker" | "admin">("worker");
   const [platform, setPlatform] = useState<Platform>("blinkit");
   const [city, setCity] = useState("");
   const [upiId, setUpiId] = useState("");
@@ -54,7 +54,7 @@ export default function RegisterPage() {
 
   const canSubmit = useMemo(() => {
     const baseValid = name.trim().length >= 2 && phone.length === 10;
-    if (role === 'user') {
+    if (role === 'worker') {
       return baseValid && city.trim().length >= 2;
     }
     return baseValid;
@@ -84,11 +84,11 @@ export default function RegisterPage() {
         name: name.trim(),
         phone,
         role,
-        platform: role === 'user' ? platform : undefined,
-        city: role === 'user' ? city.trim() : undefined,
-        upiId: (role === 'user' && upiId.trim()) ? upiId.trim() : undefined,
-        vehicleType: role === 'user' ? vehicleType : undefined,
-        vehicleRegistration: (role === 'user' && vehicleRegistration.trim()) ? vehicleRegistration.trim() : undefined,
+        platform: role === 'worker' ? platform : undefined,
+        city: role === 'worker' ? city.trim() : undefined,
+        upiId: (role === 'worker' && upiId.trim()) ? upiId.trim() : undefined,
+        vehicleType: role === 'worker' ? vehicleType : undefined,
+        vehicleRegistration: (role === 'worker' && vehicleRegistration.trim()) ? vehicleRegistration.trim() : undefined,
       };
 
       const res = await fetch("/api/register/send-otp", {
@@ -299,8 +299,8 @@ export default function RegisterPage() {
             <div className="bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg flex mb-4">
               <button
                 type="button"
-                onClick={() => { setRoleGroup("user"); setRole("user"); }}
-                className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${roleGroup === "user" ? "bg-white dark:bg-zinc-700 text-blue-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
+                onClick={() => { setRoleGroup("worker"); setRole("worker"); }}
+                className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${roleGroup === "worker" ? "bg-white dark:bg-zinc-700 text-blue-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
               >
                 DELIVERY PARTNER
               </button>
@@ -364,7 +364,7 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {role === 'user' && (
+            {role === 'worker' && (
               <>
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Delivery Platform</label>

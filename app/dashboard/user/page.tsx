@@ -32,6 +32,7 @@ interface DashboardData {
   claims: Claim[];
   payouts: Payout[];
   weeklyStats: WorkerWeeklyStats | null;
+  walletBalance: number;
 }
 
 export default function UserDashboardPage() {
@@ -45,7 +46,7 @@ export default function UserDashboardPage() {
       const phone = localStorage.getItem("userPhone");
       const role = localStorage.getItem("userRole");
 
-      if (role !== "user") {
+      if (role !== "worker") {
         window.location.href = "/dashboard";
         return;
       }
@@ -103,7 +104,7 @@ export default function UserDashboardPage() {
     );
   }
 
-  const { worker, subscription, planConfig, vehicle, zone, claims, payouts, weeklyStats } = data;
+  const { worker, subscription, planConfig, vehicle, zone, claims, payouts, weeklyStats, walletBalance } = data;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -300,66 +301,67 @@ export default function UserDashboardPage() {
         )}
 
         {/* Quick Action - Simulate Button */}
-        <div className="mb-6">
-          <Link
-            href="/simulate"
-            className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl text-white hover:from-orange-600 hover:to-red-600 transition-all"
-          >
-            <div className="flex items-center">
-              <span className="text-2xl mr-3">⚡</span>
+        {/* Removed disruption simulator as per requirements */}
+
+        {/* Worker Info Card - UPI & Vehicle */}
+        <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
+          <h3 className="font-semibold text-zinc-900 dark:text-white mb-4">Your Profile</h3>
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* UPI Info */}
+            <div className="flex items-start">
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center mr-4">
+                <span className="text-2xl">💳</span>
+              </div>
               <div>
-                <p className="font-semibold">Test Disruption Simulator</p>
-                <p className="text-sm text-white/80">Trigger weather events and file claims</p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">UPI ID</p>
+                <p className="text-lg font-semibold text-zinc-900 dark:text-white">
+                  {worker.upi_id || "Not set"}
+                </p>
+                <p className="text-xs text-zinc-400">Payouts will be sent here</p>
               </div>
             </div>
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
+
+            {/* Vehicle Info */}
+            <div className="flex items-start">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mr-4">
+                <span className="text-2xl">
+                  {vehicle?.vehicle_type === "bike" ? "🏍️" : vehicle?.vehicle_type === "scooter" ? "🛵" : "🚲"}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">Vehicle</p>
+                <p className="text-lg font-semibold text-zinc-900 dark:text-white capitalize">
+                  {vehicle?.vehicle_type || "Not registered"}
+                </p>
+                {vehicle?.registration_number && (
+                  <p className="text-xs text-zinc-400">{vehicle.registration_number}</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Stats Grid - Weekly */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-zinc-500 dark:text-zinc-400 text-sm">This Week</span>
-              <span className="text-2xl">📦</span>
+        {/* Wallet Card */}
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-6 mb-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mr-4">
+                <span className="text-2xl">👛</span>
+              </div>
+              <div>
+                <p className="text-white/70 text-sm">SwiftShield Wallet</p>
+                <p className="text-2xl font-bold">{formatCurrency(walletBalance)}</p>
+              </div>
             </div>
-            <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-              {weeklyStats?.total_deliveries || 0}
-            </p>
-            <p className="text-xs text-zinc-500">deliveries</p>
+            <div className="text-right">
+              <p className="text-white/70 text-xs">Credit Balance</p>
+              <p className="text-sm">Use for premiums</p>
+            </div>
           </div>
-
-          <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-zinc-500 dark:text-zinc-400 text-sm">Weekly Earnings</span>
-              <span className="text-2xl">💰</span>
-            </div>
-            <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-              {formatCurrency(weeklyStats?.total_earnings || 0)}
+          <div className="bg-white/10 rounded-lg p-3">
+            <p className="text-white/80 text-xs">
+              💡 Unused premium days are converted to wallet credit. Balance can be used for future premium payments only.
             </p>
-            <p className="text-xs text-zinc-500">from deliveries</p>
-          </div>
-
-          <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-zinc-500 dark:text-zinc-400 text-sm">Rating</span>
-              <span className="text-2xl">⭐</span>
-            </div>
-            <p className="text-2xl font-bold text-zinc-900 dark:text-white">{weeklyStats?.avg_rating || 5.0}</p>
-            <p className="text-xs text-zinc-500">avg score</p>
-          </div>
-
-          <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-zinc-500 dark:text-zinc-400 text-sm">Hours Active</span>
-              <span className="text-2xl">⏱️</span>
-            </div>
-            <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-              {weeklyStats?.active_hours || 0}h
-            </p>
-            <p className="text-xs text-zinc-500">this week</p>
           </div>
         </div>
 

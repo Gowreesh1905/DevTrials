@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { Worker, User } from "@/lib/database.types";
 
 type Platform = "blinkit" | "zepto" | "instamart" | null;
-type UserRole = "user" | "zonal_admin" | "control_admin";
+type UserRole = "worker" | "zonal_admin" | "control_admin";
 type Step = "role" | "admin_role" | "platform" | "phone" | "otp";
 
 // Platform logo components
@@ -41,7 +41,7 @@ const SwiggyLogo = ({ size = 32 }: { size?: number }) => (
 );
 
 export default function LoginPage() {
-  const [selectedRole, setSelectedRole] = useState<UserRole>("user");
+  const [selectedRole, setSelectedRole] = useState<UserRole>("worker");
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>(null);
   const [step, setStep] = useState<Step>("role");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -54,11 +54,11 @@ export default function LoginPage() {
   const [user, setUser] = useState<User | null>(null);
   const [worker, setWorker] = useState<Worker | null>(null);
 
-  const handleRoleSelect = (role: "user" | "admin") => {
+  const handleRoleSelect = (role: "worker" | "admin") => {
     if (role === "admin") {
       setStep("admin_role");
     } else {
-      setSelectedRole("user");
+      setSelectedRole("worker");
       setStep("platform");
     }
   };
@@ -85,7 +85,7 @@ export default function LoginPage() {
     e.preventDefault();
     
     // For delivery partners, platform is required
-    if (selectedRole === "user" && !selectedPlatform) {
+    if (selectedRole === "worker" && !selectedPlatform) {
       setError("Please select a platform to continue");
       return;
     }
@@ -161,7 +161,7 @@ export default function LoginPage() {
     e.preventDefault();
 
     // For delivery partners, platform is required
-    if (selectedRole === "user" && !selectedPlatform) {
+    if (selectedRole === "worker" && !selectedPlatform) {
       setError("Platform selection is missing. Please try again.");
       setStep("platform");
       return;
@@ -241,7 +241,7 @@ export default function LoginPage() {
 
   const handleResendOtp = async () => {
     // For delivery partners, platform is required
-    if (selectedRole === "user" && !selectedPlatform) {
+    if (selectedRole === "worker" && !selectedPlatform) {
       setError("Please select a platform to continue");
       setStep("platform");
       return;
@@ -299,7 +299,7 @@ export default function LoginPage() {
       setStep("phone");
       setOtp(["", "", "", "", "", ""]);
     } else if (step === "phone") {
-      if (selectedRole === "user") {
+      if (selectedRole === "worker") {
         setStep("platform");
       } else {
         setStep("admin_role");
@@ -381,7 +381,7 @@ export default function LoginPage() {
 
               <div className="space-y-3">
                 <button
-                  onClick={() => handleRoleSelect("user")}
+                  onClick={() => handleRoleSelect("worker")}
                   className="w-full flex items-center justify-between p-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-xl hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all group"
                 >
                   <div className="flex items-center">

@@ -50,7 +50,11 @@ export async function POST(request: Request) {
       debugOtp: otp,
       warning: "Development mode: OTP displayed on screen",
     });
-  } catch {
-    return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
+  } catch (error: any) {
+    console.error("Registration OTP error:", error);
+    return NextResponse.json({ 
+      error: "Failed to send OTP", 
+      details: error?.message 
+    }, { status: 500 });
   }
 }

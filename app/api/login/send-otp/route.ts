@@ -17,8 +17,9 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as LoginSendOtpPayload;
     const phone = payload.phone?.trim();
     const platform = payload.platform;
-    const requestedRole = payload.role || "user";
+    const requestedRole = payload.role || "worker";
 
+    // Validate phone
     if (!phone || !PHONE_REGEX.test(phone)) {
       return NextResponse.json(
         { error: "Please enter a valid 10-digit phone number" },
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
 
-    // Check if user exists in the users table (primary auth table)
+    // Check if user exists in the users table
     const { data: userData, error: userError } = await admin
       .from("users")
       .select("id, name, phone, role")
@@ -36,37 +37,39 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (userError) {
+      console.error("User lookup error:", userError);
       return NextResponse.json({ error: userError.message }, { status: 500 });
     }
 
     if (!userData) {
       return NextResponse.json(
-        { error: "No account found with this phone number. Please check and try again." },
+        { error: "No account found with this phone number. Please register first." },
         { status: 404 }
       );
     }
 
     // Role validation - ensure user has the requested role
     if (userData.role !== requestedRole) {
-      if (requestedRole === "user") {
+      if (requestedRole === "worker") {
         return NextResponse.json(
-          { error: "This account is registered as an administrator. Please select the correct role." },
+          { error: "This account is registered as an administrator. Please use the admin login." },
           { status: 403 }
         );
       }
+      // User is trying to login as admin but has worker role
       return NextResponse.json(
-        { error: `Your account does not have ${requestedRole.replace('_', ' ')} access.` },
+        { error: "This account is registered as a delivery partner. Please use the partner login." },
         { status: 403 }
       );
     }
 
-    // For delivery partners (role='user'), validate platform
-    if (requestedRole === "user") {
+    // For delivery partners (role='worker'), validate platform
+    if (requestedRole === "worker") {
       if (!platform || !PLATFORM_VALUES.includes(platform)) {
-        return NextResponse.json({ error: "Please select a valid platform" }, { status: 400 });
+        return NextResponse.json({ error: "Please select your delivery platform" }, { status: 400 });
       }
 
-      // Check worker's platform
+      // Check worker profile exists and matches platform
       const { data: workerData, error: workerError } = await admin
         .from("workers")
         .select("id, platform")
@@ -74,17 +77,19 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (workerError) {
+        console.error("Worker lookup error:", workerError);
         return NextResponse.json({ error: workerError.message }, { status: 500 });
       }
 
       if (!workerData) {
         return NextResponse.json(
-          { error: "Worker profile not found. Please contact support." },
+          { error: "Worker profile not found. Please complete your registration." },
           { status: 404 }
         );
       }
 
-      if (workerData.platform !== platform) {
+      // Platform validation - check if worker's registered platform matches login platform
+      if (workerData.platform && workerData.platform !== platform) {
         const platformName =
           workerData.platform === "blinkit"
             ? "Blinkit"
@@ -93,7 +98,7 @@ export async function POST(request: Request) {
               : "Zepto";
 
         return NextResponse.json(
-          { error: `This number is registered with ${platformName}` },
+          { error: `This account is registered with ${platformName}. Please select the correct platform.` },
           { status: 409 }
         );
       }
@@ -109,7 +114,8 @@ export async function POST(request: Request) {
       debugOtp: otp,
       warning: "Development mode: OTP displayed on screen",
     });
-  } catch {
+  } catch (error: any) {
+    console.error("Login OTP error:", error);
     return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
   }
 }

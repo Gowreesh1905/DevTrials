@@ -13,7 +13,7 @@ export function middleware(request: NextRequest) {
     const userRole = request.cookies.get('user-role')?.value;
     
     if (userRole) {
-      if (userRole === 'user' && !pathname.startsWith('/dashboard/user')) {
+      if (userRole === 'worker' && !pathname.startsWith('/dashboard/user')) {
         return NextResponse.redirect(new URL('/dashboard/user', request.url));
       }
       if (userRole === 'zonal_admin' && !pathname.startsWith('/dashboard/zonal')) {
