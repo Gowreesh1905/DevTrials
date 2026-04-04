@@ -502,6 +502,13 @@ ml-service/
 | **XGBoost Premium** | RMSE | ₹0.54 |
 | **Isolation Forest** | Anomaly Rate | 8.1% |
 
+### How ML satisfies the Claim Flow
+The ML models act as the intelligent gatekeeper between the Trigger Engine and the Payout:
+*   **Trigger Engine Validation**: The **XGBoost Premium Engine** ensures disruption events are weighted against local history (flood/forecast) before raising an auto-claim.
+*   **Fraud Detection (Layer 4)**: The **Isolation Forest Model** analyzes 11 behavioral signals to detect anomalies and "Ring Attacks" (coordinated spoofing) during the validation phase.
+*   **Decision Logic**: The service provides a 3-tier outcome: **Pass** (Auto-Approve), **Flag** (Soft-Hold/Manual Review), or **Reject** (Individual Fraud).
+*   **Risk-Adjusted Payouts**: The **Composite Risk Scorer** ensures the final payout is calibrated to the worker's specific historical earnings baseline and current zone risk.
+
 ---
 
 ## 🛠️ Tech Stack
