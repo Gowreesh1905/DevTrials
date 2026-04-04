@@ -89,8 +89,10 @@ export async function GET(request: Request) {
           .order("week_start_date", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        admin.from("plan_tiers").select("*"),
+        admin.from("insurance_plans").select("*"),
       ]);
+
+    console.log("Insurance plans from DB:", JSON.stringify(planTierRes.data, null, 2));
 
     const subscription = (subscriptionRes.data as InsuranceSubscription | null) ?? null;
     const planConfig = subscription
@@ -106,6 +108,7 @@ export async function GET(request: Request) {
       claims: (claimsRes.data as Claim[]) || [],
       payouts: (payoutsRes.data as Payout[]) || [],
       weeklyStats: (weeklyStatsRes.data as WorkerWeeklyStats | null) ?? null,
+      walletBalance: Number((worker as { wallet_balance?: number }).wallet_balance ?? 0),
     };
 
     return NextResponse.json(response);

@@ -59,6 +59,27 @@ CREATE TABLE worker_insurance (
 
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE insurance_plans (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    name insurance_plan_type UNIQUE NOT NULL,
+
+    weekly_premium DECIMAL(10,2) NOT NULL,
+    coverage_percentage INTEGER NOT NULL, -- 50, 70, 90
+
+    weekly_max_payout DECIMAL(10,2) NOT NULL,
+
+    claim_wait_minutes INTEGER NOT NULL,
+
+    includes_platform_outage BOOLEAN DEFAULT FALSE,
+
+    description TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
 CREATE TABLE workers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
