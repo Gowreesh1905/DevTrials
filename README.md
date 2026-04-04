@@ -143,6 +143,7 @@ SwiftShield provides **AI-powered parametric income protection** for Q-commerce 
 | **Claim Wait** | 2 hrs | 1 hr | 30 min |
 
 </div>
+
 ---
 
 ### 3. Parametric Triggers
