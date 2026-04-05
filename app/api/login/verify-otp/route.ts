@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase";
 import { verifyRegistrationOtpSession } from "@/lib/registration-otp-store";
-import type { Platform, Worker } from "@/lib/database.types";
+import { Platform, User, UserRole, Worker } from "@/lib/database.types";
 
 interface LoginVerifyOtpPayload {
   phone?: string;
   platform?: Platform;
   otp?: string;
   otpSessionId?: string;
+  role?: UserRole;
 }
 
 const PHONE_REGEX = /^\d{10}$/;
@@ -21,16 +22,13 @@ export async function POST(request: Request) {
     const platform = payload.platform;
     const otp = payload.otp?.trim();
     const otpSessionId = payload.otpSessionId?.trim();
+    const requestedRole = payload.role || "worker";
 
     if (!phone || !PHONE_REGEX.test(phone)) {
       return NextResponse.json(
         { error: "Please enter a valid 10-digit phone number" },
         { status: 400 }
       );
-    }
-
-    if (!platform || !PLATFORM_VALUES.includes(platform)) {
-      return NextResponse.json({ error: "Please select a valid platform" }, { status: 400 });
     }
 
     if (!otp || !OTP_REGEX.test(otp)) {
@@ -47,29 +45,89 @@ export async function POST(request: Request) {
     }
 
     const admin = createAdminClient();
-    const { data: worker, error: workerError } = await admin
-      .from("workers")
+
+    // Normalize phone to include country code for database lookup
+    const phoneWithCountryCode = `+91${phone}`;
+
+    const { data: user, error: userError } = await admin
+      .from("users")
       .select("*")
-      .eq("phone", phone)
+      .eq("phone", phoneWithCountryCode)
       .maybeSingle();
 
-    if (workerError) {
-      return NextResponse.json({ error: workerError.message }, { status: 500 });
+    if (userError) {
+      return NextResponse.json({ error: userError.message }, { status: 500 });
     }
 
-    if (!worker) {
+    if (!user) {
       return NextResponse.json(
         { error: "No account found with this phone number. Please check and try again." },
         { status: 404 }
       );
     }
 
-    if ((worker as Worker).platform !== platform) {
-      return NextResponse.json({ error: "Platform mismatch for this account" }, { status: 409 });
+    const typedUser = user as User;
+
+    // Role Validation - check if user has the requested role access
+    if (typedUser.role !== requestedRole) {
+      if (requestedRole === "worker") {
+        return NextResponse.json({ 
+          error: "This account is registered as an administrator. Please use the admin login." 
+        }, { status: 403 });
+      }
+      return NextResponse.json({ 
+        error: `Unauthorized: Your account does not have the ${requestedRole.replace('_', ' ')} role.` 
+      }, { status: 403 });
     }
 
-    return NextResponse.json({ worker: worker as Worker });
-  } catch {
+    // For delivery partners (role='worker'), validate platform and get worker data
+    let worker: Worker | null = null;
+    if (typedUser.role === "worker") {
+      if (!platform || !PLATFORM_VALUES.includes(platform)) {
+        return NextResponse.json({ error: "Please select a valid platform" }, { status: 400 });
+      }
+
+      const { data: workerData, error: workerError } = await admin
+        .from("workers")
+        .select("*")
+        .eq("user_id", typedUser.id)
+        .maybeSingle();
+
+      if (workerError) {
+        return NextResponse.json({ error: workerError.message }, { status: 500 });
+      }
+
+      if (!workerData) {
+        return NextResponse.json(
+          { error: "Worker profile not found. Please contact support." },
+          { status: 404 }
+        );
+      }
+
+      worker = workerData as Worker;
+
+      if (worker.platform !== platform) {
+        const platformName =
+          worker.platform === "blinkit"
+            ? "Blinkit"
+            : worker.platform === "instamart"
+              ? "Swiggy Instamart"
+              : "Zepto";
+        return NextResponse.json(
+          { error: `This number is registered with ${platformName}` },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Return user data and optionally worker data for delivery partners
+    return NextResponse.json({ 
+      user: typedUser,
+      worker: worker,
+      role: typedUser.role 
+    });
+  } catch (error) {
+    console.error("OTP verification error:", error);
     return NextResponse.json({ error: "Failed to verify OTP" }, { status: 500 });
   }
 }

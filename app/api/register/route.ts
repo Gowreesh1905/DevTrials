@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase";
-import type { Platform, VehicleType, Worker } from "@/lib/database.types";
+import { Platform, VehicleType, User, UserRole } from "@/lib/database.types";
 import { verifyRegistrationOtpSession } from "@/lib/registration-otp-store";
 
 interface RegisterPayload {
   name?: string;
   phone?: string;
   platform?: Platform;
-  city?: string;
-  upiId?: string;
+  city?: string;  // Stored via delivery zone assignment
+  role?: UserRole;
+  upiId?: string;  // Note: Currently not in DB schema - for future implementation
   vehicleType?: VehicleType;
   vehicleRegistration?: string;
   otp?: string;
@@ -27,17 +28,31 @@ export async function POST(request: Request) {
     const phone = payload.phone?.trim();
     const platform = payload.platform;
     const city = payload.city?.trim();
+    const role = payload.role || 'worker'; // Default to worker (delivery partner)
     const upiId = payload.upiId?.trim() || null;
     const vehicleType = payload.vehicleType;
     const vehicleRegistration = payload.vehicleRegistration?.trim() || null;
     const otp = payload.otp?.trim();
     const otpSessionId = payload.otpSessionId?.trim();
 
-    if (!name || !phone || !platform || !city || !vehicleType || !otp || !otpSessionId) {
+    if (!name || !phone || !otp || !otpSessionId) {
       return NextResponse.json(
-        { error: "Registration details and OTP verification are required" },
+        { error: "Name, phone, and OTP verification are required" },
         { status: 400 }
       );
+    }
+
+    // Role-specific validation
+    if (role === 'worker') {
+      if (!platform || !vehicleType) {
+        return NextResponse.json(
+          { error: "Platform and vehicle details are required for delivery partners" },
+          { status: 400 }
+        );
+      }
+      if (!VEHICLE_TYPES.includes(vehicleType)) {
+        return NextResponse.json({ error: "Please select a valid vehicle type" }, { status: 400 });
+      }
     }
 
     if (name.length < 2 || name.length > 100) {
@@ -55,10 +70,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Please enter a valid UPI ID" }, { status: 400 });
     }
 
-    if (!VEHICLE_TYPES.includes(vehicleType)) {
-      return NextResponse.json({ error: "Please select a valid vehicle type" }, { status: 400 });
-    }
-
     if (!/^\d{6}$/.test(otp)) {
       return NextResponse.json({ error: "Please enter a valid 6-digit OTP" }, { status: 400 });
     }
@@ -70,59 +81,102 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
 
-    const { data: existingWorker, error: existingWorkerError } = await admin
-      .from("workers")
+    // Check existing user in users table
+    const { data: existingUser, error: existingUserError } = await admin
+      .from("users")
       .select("id")
       .eq("phone", phone)
       .maybeSingle();
 
-    if (existingWorkerError) {
-      return NextResponse.json({ error: existingWorkerError.message }, { status: 500 });
+    if (existingUserError) {
+      return NextResponse.json({ error: existingUserError.message }, { status: 500 });
     }
 
-    if (existingWorker) {
+    if (existingUser) {
       return NextResponse.json(
         { error: "A user with this phone number already exists" },
         { status: 409 }
       );
     }
 
-    const workersTable = admin.from("workers") as ReturnType<typeof admin.from>;
-
-    const { data: worker, error: createError } = await workersTable
+    // 1. Create Identity in users table
+    const { data: user, error: userCreateError } = await admin
+      .from("users")
       .insert({
         name,
         phone,
-        platform,
-        city,
-        upi_id: upiId,
+        role,
       })
       .select("*")
       .single();
 
-    if (createError || !worker) {
+    if (userCreateError || !user) {
       return NextResponse.json(
-        { error: createError?.message || "Failed to create account" },
+        { error: userCreateError?.message || "Failed to create user identity" },
         { status: 500 }
       );
     }
 
-    const vehiclesTable = admin.from("worker_vehicles") as ReturnType<typeof admin.from>;
+    // 2. If role is 'worker', create Partner specifics in workers table
+    if (role === 'worker' && platform && vehicleType) {
+      // Find or create delivery zone for the city (if city provided)
+      let assignedZoneId: string | null = null;
+      if (city) {
+        const { data: existingZone } = await admin
+          .from("delivery_zones")
+          .select("id")
+          .ilike("city", city)
+          .maybeSingle();
+        
+        if (existingZone) {
+          assignedZoneId = existingZone.id;
+        }
+      }
 
-    const { error: vehicleCreateError } = await vehiclesTable.insert({
-      worker_id: (worker as Worker).id,
-      vehicle_type: vehicleType,
-      registration_number: vehicleRegistration,
-      is_primary: true,
-    });
+      const { data: worker, error: workerCreateError } = await admin
+        .from("workers")
+        .insert({
+          user_id: user.id,
+          name,
+          phone, // Store phone in workers for quick lookup
+          platform,
+          city: city || null,
+          upi_id: upiId,
+          assigned_zone_id: assignedZoneId,
+        })
+        .select("*")
+        .single();
 
-    if (vehicleCreateError) {
-      await workersTable.delete().eq("id", (worker as Worker).id);
-      return NextResponse.json({ error: "Failed to save vehicle details" }, { status: 500 });
+      if (workerCreateError || !worker) {
+        // Rollback user creation
+        await admin.from("users").delete().eq("id", user.id);
+        return NextResponse.json(
+          { error: workerCreateError?.message || "Failed to create worker profile" },
+          { status: 500 }
+        );
+      }
+
+      // 3. Create vehicle entry
+      const { error: vehicleCreateError } = await admin.from("worker_vehicles").insert({
+        worker_id: worker.id,
+        vehicle_type: vehicleType,
+        registration_number: vehicleRegistration,
+        is_primary: true,
+      });
+
+      if (vehicleCreateError) {
+        // Rollback
+        await admin.from("workers").delete().eq("id", worker.id);
+        await admin.from("users").delete().eq("id", user.id);
+        return NextResponse.json({ error: "Failed to save vehicle details" }, { status: 500 });
+      }
+
+      return NextResponse.json({ user, worker }, { status: 201 });
     }
 
-    return NextResponse.json({ worker: worker as Worker }, { status: 201 });
-  } catch {
+    return NextResponse.json({ user }, { status: 201 });
+  } catch (error: any) {
+    console.error("Registration error:", error);
     return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
   }
 }

@@ -3,17 +3,18 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Platform, VehicleType, Worker } from "@/lib/database.types";
+import type { Platform, VehicleType, Worker, User, UserRole } from "@/lib/database.types";
 
 type RegisterStep = "consent" | "form" | "otp";
 
 interface PendingRegistration {
   name: string;
   phone: string;
-  platform: Platform;
-  city: string;
+  role: UserRole;
+  platform?: Platform;
+  city?: string;
   upiId?: string;
-  vehicleType: VehicleType;
+  vehicleType?: VehicleType;
   vehicleRegistration?: string;
 }
 
@@ -35,6 +36,8 @@ export default function RegisterPage() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [role, setRole] = useState<UserRole>("worker");
+  const [roleGroup, setRoleGroup] = useState<"worker" | "admin">("worker");
   const [platform, setPlatform] = useState<Platform>("blinkit");
   const [city, setCity] = useState("");
   const [upiId, setUpiId] = useState("");
@@ -50,8 +53,12 @@ export default function RegisterPage() {
   const [pendingRegistration, setPendingRegistration] = useState<PendingRegistration | null>(null);
 
   const canSubmit = useMemo(() => {
-    return name.trim().length >= 2 && phone.length === 10 && city.trim().length >= 2;
-  }, [name, phone, city]);
+    const baseValid = name.trim().length >= 2 && phone.length === 10;
+    if (role === 'worker') {
+      return baseValid && city.trim().length >= 2;
+    }
+    return baseValid;
+  }, [name, phone, city, role]);
 
   const handleContinue = () => {
     if (!acceptedTerms) {
@@ -76,11 +83,12 @@ export default function RegisterPage() {
       const registerPayload: PendingRegistration = {
         name: name.trim(),
         phone,
-        platform,
-        city: city.trim(),
-        upiId: upiId.trim() || undefined,
-        vehicleType,
-        vehicleRegistration: vehicleRegistration.trim() || undefined,
+        role,
+        platform: role === 'worker' ? platform : undefined,
+        city: role === 'worker' ? city.trim() : undefined,
+        upiId: (role === 'worker' && upiId.trim()) ? upiId.trim() : undefined,
+        vehicleType: role === 'worker' ? vehicleType : undefined,
+        vehicleRegistration: (role === 'worker' && vehicleRegistration.trim()) ? vehicleRegistration.trim() : undefined,
       };
 
       const res = await fetch("/api/register/send-otp", {
@@ -146,17 +154,24 @@ export default function RegisterPage() {
         }),
       });
 
-      const payload = (await res.json()) as { error?: string; worker?: Worker };
+      const payload = (await res.json()) as { error?: string; user: User; worker?: Worker };
 
-      if (!res.ok || !payload.worker) {
+      if (!res.ok || !payload.user) {
         setError(payload.error || "OTP verification failed. Please try again.");
         setIsSubmitting(false);
         return;
       }
 
-      localStorage.setItem("workerId", payload.worker.id);
-      localStorage.setItem("userPhone", payload.worker.phone);
-      localStorage.setItem("userPlatform", payload.worker.platform);
+      localStorage.setItem("userId", payload.user.id);
+      localStorage.setItem("userPhone", payload.user.phone);
+      localStorage.setItem("userRole", payload.user.role);
+      if (payload.worker) {
+        localStorage.setItem("workerId", payload.worker.id);
+        localStorage.setItem("userPlatform", payload.worker.platform);
+      }
+
+      // Set cookie for middleware
+      document.cookie = `user-role=${payload.user.role}; path=/; max-age=3600; SameSite=Lax`;
 
       router.push("/dashboard");
     } catch {
@@ -281,6 +296,42 @@ export default function RegisterPage() {
 
         {step === "form" && (
           <form onSubmit={handleRegister} className="space-y-4">
+            <div className="bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg flex mb-4">
+              <button
+                type="button"
+                onClick={() => { setRoleGroup("worker"); setRole("worker"); }}
+                className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${roleGroup === "worker" ? "bg-white dark:bg-zinc-700 text-blue-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
+              >
+                DELIVERY PARTNER
+              </button>
+              <button
+                type="button"
+                onClick={() => { setRoleGroup("admin"); setRole("zonal_admin"); }}
+                className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${roleGroup === "admin" ? "bg-white dark:bg-zinc-700 text-blue-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
+              >
+                ADMINISTRATOR
+              </button>
+            </div>
+
+            {roleGroup === "admin" && (
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setRole("zonal_admin")}
+                  className={`py-3 px-2 text-[10px] font-black border rounded-xl transition-all ${role === "zonal_admin" ? "bg-blue-600/10 border-blue-600 text-blue-600" : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"}`}
+                >
+                  ZONAL_ADMIN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole("control_admin")}
+                  className={`py-3 px-2 text-[10px] font-black border rounded-xl transition-all ${role === "control_admin" ? "bg-emerald-600/10 border-emerald-600 text-emerald-600" : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700"}`}
+                >
+                  CONTROL_ADMIN
+                </button>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Full Name</label>
               <input
@@ -313,71 +364,75 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Delivery Platform</label>
-              <select
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value as Platform)}
-                className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {PLATFORM_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {role === 'worker' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Delivery Platform</label>
+                  <select
+                    value={platform}
+                    onChange={(e) => setPlatform(e.target.value as Platform)}
+                    className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {PLATFORM_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">City</label>
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g., Mumbai"
-                className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="e.g., Mumbai"
+                    className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">UPI ID (Optional)</label>
-              <input
-                type="text"
-                value={upiId}
-                onChange={(e) => setUpiId(e.target.value)}
-                placeholder="yourname@upi"
-                className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">UPI ID (Optional)</label>
+                  <input
+                    type="text"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    placeholder="yourname@upi"
+                    className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Vehicle Type</label>
-              <select
-                value={vehicleType}
-                onChange={(e) => setVehicleType(e.target.value as VehicleType)}
-                className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {VEHICLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Vehicle Type</label>
+                  <select
+                    value={vehicleType}
+                    onChange={(e) => setVehicleType(e.target.value as VehicleType)}
+                    className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {VEHICLE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                Vehicle Registration Number (Optional)
-              </label>
-              <input
-                type="text"
-                value={vehicleRegistration}
-                onChange={(e) => setVehicleRegistration(e.target.value.toUpperCase())}
-                placeholder="e.g., MH02AB1234"
-                className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                    Vehicle Registration Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={vehicleRegistration}
+                    onChange={(e) => setVehicleRegistration(e.target.value.toUpperCase())}
+                    placeholder="e.g., MH02AB1234"
+                    className="w-full px-4 py-3 border border-zinc-300 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </>
+            )}
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
@@ -428,9 +483,12 @@ export default function RegisterPage() {
             </div>
 
             {debugOtp && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Dev OTP (SMS not configured): {debugOtp}
-              </p>
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-center">
+                <p className="text-xs text-amber-600 dark:text-amber-400 mb-1">Development Mode</p>
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-300 tracking-widest">
+                  OTP: {debugOtp}
+                </p>
+              </div>
             )}
 
             {error && <p className="text-sm text-red-500">{error}</p>}
@@ -465,12 +523,17 @@ export default function RegisterPage() {
           </form>
         )}
 
-        <p className="text-center text-sm text-zinc-500 dark:text-zinc-400 mt-6">
-          Already registered?{" "}
-          <Link href="/login" className="text-blue-600 dark:text-blue-400 hover:underline">
-            Login here
-          </Link>
-        </p>
+        <div className="text-center mt-6 space-y-2">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Already registered?{" "}
+            <Link href="/login" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+              Login here
+            </Link>
+          </p>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+            <Link href="/" className="hover:underline">← Back to Home</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

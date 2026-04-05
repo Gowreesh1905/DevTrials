@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase";
 import { createRegistrationOtpSession } from "@/lib/registration-otp-store";
-import { sendRegistrationOtpSms } from "@/lib/sms";
 
 interface SendOtpPayload {
   phone?: string;
@@ -22,45 +21,40 @@ export async function POST(request: Request) {
     }
 
     const admin = createAdminClient();
-    const { data: existingWorker, error: existingWorkerError } = await admin
-      .from("workers")
+    
+    // Check users table (primary auth table) for existing phone
+    const { data: existingUser, error: existingUserError } = await admin
+      .from("users")
       .select("id")
       .eq("phone", phone)
       .maybeSingle();
 
-    if (existingWorkerError) {
-      return NextResponse.json({ error: existingWorkerError.message }, { status: 500 });
+    if (existingUserError) {
+      return NextResponse.json({ error: existingUserError.message }, { status: 500 });
     }
 
-    if (existingWorker) {
+    if (existingUser) {
       return NextResponse.json(
-        { error: "A user with this phone number already exists" },
+        { error: "A user with this phone number already exists. Please login instead." },
         { status: 409 }
       );
     }
 
     const { sessionId, otp, ttlSeconds } = createRegistrationOtpSession(phone);
-    const smsResult = await sendRegistrationOtpSms(phone, otp);
 
-    if (!smsResult.sent) {
-      if (process.env.NODE_ENV !== "production") {
-        return NextResponse.json({
-          sessionId,
-          ttlSeconds,
-          smsDispatched: false,
-          debugOtp: otp,
-          warning: smsResult.reason,
-        });
-      }
-
-      return NextResponse.json(
-        { error: smsResult.reason || "Failed to send OTP SMS" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ sessionId, ttlSeconds, smsDispatched: true });
-  } catch {
-    return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
+    // Development mode: Always return OTP for display on frontend
+    return NextResponse.json({
+      sessionId,
+      ttlSeconds,
+      smsDispatched: false,
+      debugOtp: otp,
+      warning: "Development mode: OTP displayed on screen",
+    });
+  } catch (error: any) {
+    console.error("Registration OTP error:", error);
+    return NextResponse.json({ 
+      error: "Failed to send OTP", 
+      details: error?.message 
+    }, { status: 500 });
   }
 }

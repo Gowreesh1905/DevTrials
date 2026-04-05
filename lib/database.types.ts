@@ -14,30 +14,35 @@ export type PayoutType = 'claim' | 'bonus' | 'refund' | 'wallet_credit';
 export type VehicleType = 'bike' | 'scooter' | 'bicycle';
 export type SubscriptionStatus = 'active' | 'expired' | 'pending' | 'paused';
 export type DisruptionSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type UserRole = 'worker' | 'zonal_admin' | 'control_admin';
 
 // ============================================================================
 // DATABASE ROW TYPES
 // ============================================================================
 
+export interface User {
+  id: string;
+  name: string | null;
+  phone: string;
+  role: UserRole;
+  created_at: string;
+}
+
 export interface Worker {
   id: string;
-  auth_user_id: string | null;
+  user_id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   platform: Platform;
-  profile_image_url: string | null;
-  city: string;
-  joined_date: string;
+  city: string | null;
+  upi_id: string | null;
+  assigned_zone_id: string | null;
   current_lat: number | null;
   current_lng: number | null;
-  assigned_zone_id: string | null;
-  is_online: boolean;
-  last_active_at: string | null;
-  upi_id: string | null;
+  is_logged_in: boolean;
   fraud_score: number;
   cooling_period_until: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 export interface WorkerVehicle {
@@ -61,6 +66,14 @@ export interface WorkerWeeklyStats {
   total_claim_amount: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WorkerGlobalStats {
+  total_workers: number;
+  total_claims: number;
+  total_payouts: number;
+  active_subscriptions: number;
+  avg_fraud_score: number;
 }
 
 export interface PlanTierConfig {
@@ -274,10 +287,18 @@ export interface ChatLog {
 // INSERT TYPES (for creating new records)
 // ============================================================================
 
-export type WorkerInsert = Omit<Worker, 'id' | 'created_at' | 'updated_at'> & {
+export type UserInsert = Omit<User, 'id' | 'created_at'> & {
   id?: string;
   created_at?: string;
-  updated_at?: string;
+};
+
+export type UserUpdate = Partial<Omit<User, 'id' | 'created_at'>>;
+
+export type WorkerInsert = Omit<Worker, 'id' | 'created_at' | 'is_logged_in' | 'fraud_score'> & {
+  id?: string;
+  created_at?: string;
+  is_logged_in?: boolean;
+  fraud_score?: number;
 };
 
 export type ClaimInsert = Omit<Claim, 'id' | 'created_at'> & {
@@ -346,6 +367,11 @@ export interface DisruptionWithZones extends Disruption {
 export interface Database {
   public: {
     Tables: {
+      users: {
+        Row: User;
+        Insert: UserInsert;
+        Update: UserUpdate;
+      };
       workers: {
         Row: Worker;
         Insert: WorkerInsert;
