@@ -340,14 +340,50 @@ export default function UserDashboardPage() {
               </div>
             </div>
           </div>
-        ) : (
-          <div className="bg-zinc-200 dark:bg-zinc-800 rounded-2xl p-6 mb-6 text-center">
-            <p className="text-zinc-600 dark:text-zinc-400">No active insurance subscription</p>
-            <Link href="/plans" className="text-blue-600 hover:underline mt-2 inline-block">
-              View Plans
-            </Link>
-          </div>
-        )}
+        ) : (() => {
+          const savedPlan = typeof window !== "undefined" ? localStorage.getItem("subscribedPlan") : null;
+          const planInfo: Record<string, { name: string; price: number; coverage: string; cap: string; color: string; icon: string }> = {
+            starter: { name: "Starter", price: 29, coverage: "50%", cap: "₹1,500", color: "from-emerald-500 to-teal-600", icon: "🏅" },
+            shield: { name: "Shield", price: 59, coverage: "70%", cap: "₹3,600", color: "from-blue-500 to-indigo-600", icon: "🔵" },
+            pro: { name: "Pro", price: 99, coverage: "90%", cap: "₹6,000", color: "from-purple-500 to-violet-600", icon: "🏆" },
+          };
+          const info = savedPlan ? planInfo[savedPlan] : null;
+
+          return info ? (
+            <div className={`bg-gradient-to-r ${info.color} rounded-2xl p-6 mb-6 text-white`}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-white/70 text-sm">SwiftShield Insurance</p>
+                  <h2 className="text-2xl font-bold">{info.icon} {info.name} Plan</h2>
+                </div>
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-white/20 text-white">
+                  ACTIVE
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-white/70 text-sm">Weekly Premium</p>
+                  <p className="text-xl font-semibold">₹{info.price}</p>
+                </div>
+                <div>
+                  <p className="text-white/70 text-sm">Income Coverage</p>
+                  <p className="text-xl font-semibold">{info.coverage}</p>
+                </div>
+                <div>
+                  <p className="text-white/70 text-sm">Weekly Cap</p>
+                  <p className="text-xl font-semibold">{info.cap}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-zinc-200 dark:bg-zinc-800 rounded-2xl p-6 mb-6 text-center">
+              <p className="text-zinc-600 dark:text-zinc-400">No active insurance subscription</p>
+              <Link href="/plans" className="text-blue-600 hover:underline mt-2 inline-block">
+                View Plans
+              </Link>
+            </div>
+          );
+        })()}
 
         {/* Profile Card - with UPI inside */}
         <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
