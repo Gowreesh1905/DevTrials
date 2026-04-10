@@ -138,7 +138,7 @@ SwiftShield provides **AI-powered parametric income protection** for Q-commerce 
 | **Weekly Premium** | ₹29 | ₹59 | ₹99 |
 | **Income Coverage** | 50% | 70% | 90% |
 | **Weekly Max** | ₹1,500 | ₹3,600 | ₹6,000 |
-| **Triggers** | Rain · Heat | Weather · Curfew | All + Platform Outage |
+| **Triggers** | Rain · Heat · Fog | All except Platform Outage | All + Platform Outage |
 | **Claim Wait** | 2 hrs | 1 hr | 30 min |
 
 </div>
