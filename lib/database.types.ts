@@ -7,11 +7,12 @@
 
 export type Platform = 'blinkit' | 'zepto' | 'instamart';
 export type PlanTier = 'starter' | 'shield' | 'pro';
-export type TriggerType = 'rainfall' | 'extreme_heat' | 'flood' | 'cold_fog' | 'civil_unrest' | 'accident';
-export type ClaimStatus = 'pending' | 'approved' | 'rejected' | 'paid';
+export type InsurancePlanType = 'starter' | 'shield' | 'pro';
+export type TriggerType = 'rainfall' | 'extreme_heat' | 'flood' | 'cold_fog' | 'civil_unrest' | 'platform_outage';
+export type ClaimStatus = 'pending' | 'approved' | 'rejected';
 export type PayoutStatus = 'processing' | 'completed' | 'failed';
 export type PayoutType = 'claim' | 'bonus' | 'refund' | 'wallet_credit';
-export type VehicleType = 'bike' | 'scooter' | 'bicycle';
+export type VehicleType = 'bike' | 'scooter';
 export type SubscriptionStatus = 'active' | 'expired' | 'pending' | 'paused';
 export type DisruptionSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type UserRole = 'worker' | 'zonal_admin' | 'control_admin';
@@ -31,11 +32,8 @@ export interface User {
 export interface Worker {
   id: string;
   user_id: string;
-  name: string;
-  phone: string | null;
-  platform: Platform;
-  city: string | null;
-  upi_id: string | null;
+  name: string | null;
+  platform: Platform | null;
   assigned_zone_id: string | null;
   current_lat: number | null;
   current_lng: number | null;
@@ -89,6 +87,18 @@ export interface PlanTierConfig {
   updated_at: string;
 }
 
+export interface InsurancePlan {
+  id: string;
+  name: InsurancePlanType;
+  weekly_premium: number;
+  coverage_percentage: number;
+  weekly_max_payout: number;
+  claim_wait_minutes: number;
+  includes_platform_outage: boolean;
+  description: string | null;
+  created_at: string;
+}
+
 export interface TriggerDefinition {
   id: string;
   trigger_type: TriggerType;
@@ -129,16 +139,28 @@ export interface InsuranceSubscription {
   updated_at: string;
 }
 
+export interface WorkerInsurance {
+  id: string;
+  worker_id: string;
+  plan: InsurancePlanType;
+  start_date: string;
+  created_at: string;
+}
+
 export interface Disruption {
   id: string;
+  zone_id?: string;
   trigger_type: TriggerType;
   start_time: string;
   end_time: string | null;
   is_active: boolean;
   severity: DisruptionSeverity;
+  severity_level?: number;
+  duration_minutes?: number;
   description: string | null;
   weather_data: WeatherData;
   data_source: string | null;
+  source?: string;
   created_at: string;
   updated_at: string;
 }
@@ -153,23 +175,31 @@ export interface WeatherData {
 export interface Claim {
   id: string;
   worker_id: string;
-  subscription_id: string;
   disruption_id: string | null;
-  trigger_type: TriggerType;
-  claim_date: string;
-  start_time: string;
-  end_time: string | null;
-  duration_minutes: number | null;
-  amount: number;
+  claim_type: 'auto' | 'manual';
   status: ClaimStatus;
-  rejection_reason: string | null;
-  description: string | null;
-  location_lat: number | null;
-  location_lng: number | null;
-  zone_id: string | null;
-  created_at: string;
-  processed_at: string | null;
+  claim_time: string;
+  start_time: string | null;
+  end_time: string | null;
+  orders_before: number | null;
+  orders_during: number | null;
+  claim_hour: number | null;
+  fraud_score: number | null;
+  reason: string | null;
+  rejection_reason?: string | null;
+  amount: number;
+  payment_status: 'pending' | 'success';
   paid_at: string | null;
+  created_at: string;
+  
+  // Backward compatibility fields (if still needed by frontend)
+  trigger_type?: TriggerType;
+  claim_date?: string;
+  duration_minutes?: number | null;
+  description?: string | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
+  zone_id?: string | null;
 }
 
 export interface ClaimVerification {
@@ -283,6 +313,15 @@ export interface ChatLog {
   timestamp: string;
 }
 
+export interface Admin {
+  id: string;
+  user_id: string;
+  role: UserRole;
+  assigned_zone_id: string | null;
+  permissions: Record<string, unknown> | null;
+  created_at: string;
+}
+
 // ============================================================================
 // INSERT TYPES (for creating new records)
 // ============================================================================
@@ -392,6 +431,11 @@ export interface Database {
         Insert: Omit<PlanTierConfig, 'created_at' | 'updated_at'>;
         Update: Partial<Omit<PlanTierConfig, 'id' | 'created_at'>>;
       };
+      insurance_plans: {
+        Row: InsurancePlan;
+        Insert: Omit<InsurancePlan, 'id' | 'created_at'>;
+        Update: Partial<Omit<InsurancePlan, 'id' | 'created_at'>>;
+      };
       trigger_definitions: {
         Row: TriggerDefinition;
         Insert: Omit<TriggerDefinition, 'created_at'>;
@@ -406,6 +450,11 @@ export interface Database {
         Row: InsuranceSubscription;
         Insert: InsuranceSubscriptionInsert;
         Update: InsuranceSubscriptionUpdate;
+      };
+      worker_insurance: {
+        Row: WorkerInsurance;
+        Insert: Omit<WorkerInsurance, 'id' | 'created_at'>;
+        Update: Partial<Omit<WorkerInsurance, 'id' | 'created_at'>>;
       };
       disruptions: {
         Row: Disruption;
@@ -452,10 +501,37 @@ export interface Database {
         Insert: Omit<AuditLog, 'id' | 'created_at'>;
         Update: never;
       };
+      admins: {
+        Row: Admin;
+        Insert: Omit<Admin, 'id' | 'created_at'>;
+        Update: Partial<Omit<Admin, 'id' | 'created_at'>>;
+      };
+      admin_actions: {
+        Row: {
+          id: string;
+          admin_id: string;
+          action_type: string;
+          target_id: string | null;
+          target_type: string | null;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: Omit<{
+          id: string;
+          admin_id: string;
+          action_type: string;
+          target_id: string | null;
+          target_type: string | null;
+          reason: string | null;
+          created_at: string;
+        }, 'id' | 'created_at'>;
+        Update: never;
+      };
     };
     Enums: {
       platform_type: Platform;
       plan_tier: PlanTier;
+      insurance_plan_type: InsurancePlanType;
       trigger_type: TriggerType;
       claim_status: ClaimStatus;
       payout_status: PayoutStatus;

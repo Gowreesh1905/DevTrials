@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { 
   Worker, 
   AuditLog, 
-  WorkerGlobalStats,
   Claim,
   Disruption,
   DeliveryZone,
@@ -19,11 +18,11 @@ const TRIGGER_INFO: Record<TriggerType, { name: string; icon: string }> = {
   flood: { name: "Urban Flooding", icon: "🌊" },
   cold_fog: { name: "Dense Fog/Cold", icon: "🌫️" },
   civil_unrest: { name: "Civil Disruption", icon: "⚠️" },
-  accident: { name: "Minor Accident", icon: "🚗" },
+  platform_outage: { name: "Platform Outage", icon: "🔌" },
 };
 
 interface ControlDashboardData {
-  admin: Worker;
+  admin: { id: string; user_id: string; role: string };
   globalStats: {
     total_workers: number;
     total_claims: number;
@@ -46,7 +45,6 @@ interface ControlDashboardData {
     failed: number;
   };
   systemMetrics: {
-    lossRatio: number;
     claimTrend: number;
     automationRate: number;
   };
@@ -54,6 +52,11 @@ interface ControlDashboardData {
   systemStatus: {
     status: "healthy" | "degraded" | "outage";
     uptime: string;
+  };
+  planPricing?: {
+    starter: number;
+    shield: number;
+    pro: number;
   };
 }
 
@@ -72,10 +75,11 @@ export default function ControlDashboardPage() {
   const [editingPrices, setEditingPrices] = useState(false);
   const [tempPrices, setTempPrices] = useState({ ...tierPrices });
   const [priceUpdateStatus, setPriceUpdateStatus] = useState<string | null>(null);
+  const [savingPrices, setSavingPrices] = useState(false);
 
   useEffect(() => {
     async function fetchControlData() {
-      const workerId = localStorage.getItem("workerId");
+      const userId = localStorage.getItem("userId");
       const role = localStorage.getItem("userRole");
 
       if (role !== "control_admin") {
@@ -83,75 +87,26 @@ export default function ControlDashboardPage() {
         return;
       }
 
+      if (!userId) {
+        setError("Not logged in");
+        setLoading(false);
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/admin/control-stats?adminId=${workerId}`);
+        const res = await fetch(`/api/admin/control-stats?adminId=${userId}`);
         if (!res.ok) {
-          throw new Error("Failed to fetch control data");
+          const payload = await res.json();
+          throw new Error(payload.error || "Failed to fetch control data");
         }
-        const controlData = await res.json();
+        const controlData = (await res.json()) as ControlDashboardData;
         setData(controlData);
+        if (controlData.planPricing) {
+          setTierPrices(controlData.planPricing);
+          setTempPrices(controlData.planPricing);
+        }
       } catch (err) {
-        setError("Control Admin API reaching capacity. Showing System Monitoring View.");
-        // Mock data for UI demonstration
-        setData({
-          admin: { name: "System Admin", role: "control_admin" } as Worker,
-          globalStats: { 
-            total_workers: 1250, 
-            total_claims: 840, 
-            total_payouts: 425000,
-            active_subscriptions: 980,
-            avg_fraud_score: 23,
-            pending_claims: 45,
-            approved_claims: 720,
-            rejected_claims: 75,
-          },
-          zones: [
-            { id: "z1", name: "Indiranagar", city: "Bangalore", risk_score: 72, worker_count: 145, claim_count: 89 } as DeliveryZone & { worker_count: number; claim_count: number },
-            { id: "z2", name: "Koramangala", city: "Bangalore", risk_score: 45, worker_count: 210, claim_count: 56 } as DeliveryZone & { worker_count: number; claim_count: number },
-            { id: "z3", name: "HSR Layout", city: "Bangalore", risk_score: 88, worker_count: 178, claim_count: 134 } as DeliveryZone & { worker_count: number; claim_count: number },
-            { id: "z4", name: "Whitefield", city: "Bangalore", risk_score: 35, worker_count: 320, claim_count: 67 } as DeliveryZone & { worker_count: number; claim_count: number },
-            { id: "z5", name: "Electronic City", city: "Bangalore", risk_score: 62, worker_count: 195, claim_count: 98 } as DeliveryZone & { worker_count: number; claim_count: number },
-          ],
-          activeDisruptions: [
-            { id: "d1", trigger_type: "rainfall", severity: "high", is_active: true, start_time: new Date(Date.now() - 3600000).toISOString() } as Disruption,
-            { id: "d2", trigger_type: "flood", severity: "critical", is_active: true, start_time: new Date(Date.now() - 7200000).toISOString() } as Disruption,
-          ],
-          recentClaims: [
-            { id: "c1", worker_id: "w1", amount: 350, trigger_type: "rainfall", status: "pending", claim_date: new Date().toISOString() } as Claim,
-            { id: "c2", worker_id: "w2", amount: 500, trigger_type: "flood", status: "approved", claim_date: new Date().toISOString() } as Claim,
-          ],
-          highRiskWorkers: [
-            { id: "w1", name: "Worker A", fraud_score: 85, claim_count: 12 } as Worker & { claim_count: number },
-            { id: "w2", name: "Worker B", fraud_score: 78, claim_count: 9 } as Worker & { claim_count: number },
-            { id: "w3", name: "Worker C", fraud_score: 72, claim_count: 15 } as Worker & { claim_count: number },
-          ],
-          flaggedClaims: [
-            { id: "f1", worker_id: "w1", amount: 850, trigger_type: "flood", status: "pending", claim_date: new Date().toISOString(), fraud_score: 85, anomaly_score: 0.92 } as Claim & { fraud_score: number; anomaly_score: number },
-            { id: "f2", worker_id: "w2", amount: 620, trigger_type: "rainfall", status: "pending", claim_date: new Date().toISOString(), fraud_score: 71, anomaly_score: 0.78 } as Claim & { fraud_score: number; anomaly_score: number },
-          ],
-          payoutMetrics: {
-            total: 425000,
-            processing: 12500,
-            completed: 400000,
-            failed: 12500,
-          },
-          systemMetrics: {
-            lossRatio: 68,
-            claimTrend: 12,
-            automationRate: 94,
-          },
-          recentLogs: [
-            { id: "1", action: "CLAIM_AUTO_APPROVED", entity_type: "claim", created_at: new Date().toISOString(), user_id: "system", user_type: "system", entity_id: "c123", old_values: null, new_values: null, metadata: { info: "Claim #c123 auto-approved via ML" }, ip_address: null, user_agent: null } as AuditLog,
-            { id: "2", action: "ZONE_RISK_UPDATE", entity_type: "zone", created_at: new Date(Date.now() - 60000).toISOString(), user_id: "admin", user_type: "control_admin", entity_id: "z1", old_values: null, new_values: null, metadata: { info: "HSR Layout risk score increased to 88" }, ip_address: null, user_agent: null } as AuditLog,
-            { id: "3", action: "DISRUPTION_CREATED", entity_type: "disruption", created_at: new Date(Date.now() - 120000).toISOString(), user_id: "system", user_type: "system", entity_id: "d1", old_values: null, new_values: null, metadata: { info: "Heavy rainfall detected in Bangalore" }, ip_address: null, user_agent: null } as AuditLog,
-            { id: "4", action: "FRAUD_ALERT", entity_type: "worker", created_at: new Date(Date.now() - 180000).toISOString(), user_id: "ml_engine", user_type: "system", entity_id: "w456", old_values: null, new_values: null, metadata: { info: "High anomaly score detected for Worker #w456" }, ip_address: null, user_agent: null } as AuditLog,
-            { id: "5", action: "PAYOUT_BATCH", entity_type: "payout", created_at: new Date(Date.now() - 300000).toISOString(), user_id: "system", user_type: "system", entity_id: null, old_values: null, new_values: null, metadata: { info: "Batch payout processed: ₹45,000 to 32 workers" }, ip_address: null, user_agent: null } as AuditLog,
-          ],
-          systemStatus: {
-            status: "healthy",
-            uptime: "99.98%"
-          }
-        });
+        setError(err instanceof Error ? err.message : "Failed to load control dashboard data");
       } finally {
         setLoading(false);
       }
@@ -168,10 +123,59 @@ export default function ControlDashboardPage() {
     }).format(amount);
   };
 
+  const handleSavePrices = async () => {
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      setPriceUpdateStatus("Unable to update pricing: admin session not found.");
+      return;
+    }
+
+    setSavingPrices(true);
+    setPriceUpdateStatus(null);
+
+    try {
+      const res = await fetch("/api/admin/update-plan-pricing", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          adminId: userId,
+          planPricing: tempPrices,
+        }),
+      });
+
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.error || "Failed to update pricing");
+      }
+
+      setTierPrices({ ...tempPrices });
+      setEditingPrices(false);
+      setPriceUpdateStatus("Prices updated successfully!");
+      setTimeout(() => setPriceUpdateStatus(null), 3000);
+    } catch (err) {
+      setPriceUpdateStatus(err instanceof Error ? err.message : "Failed to update pricing");
+    } finally {
+      setSavingPrices(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
+        <div className="text-center">
+          <p className="text-lg font-semibold">Unable to load control dashboard</p>
+          <p className="text-zinc-400 text-sm mt-2">{error || "No data returned from server"}</p>
+        </div>
       </div>
     );
   }
@@ -261,7 +265,7 @@ export default function ControlDashboardPage() {
         {activeSection === "overview" && (
           <>
             {/* Global Stats Grid */}
-            <div className="grid md:grid-cols-5 gap-4 mb-6">
+            <div className="grid md:grid-cols-4 gap-4 mb-6">
               <div className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-xl hover:border-emerald-500/50 transition-all">
                 <p className="text-zinc-500 text-xs mb-2 uppercase">Global Partners</p>
                 <p className="text-3xl font-bold tracking-widest">{data?.globalStats.total_workers || 0}</p>
@@ -281,14 +285,6 @@ export default function ControlDashboardPage() {
                 <p className="text-zinc-500 text-xs mb-2 uppercase">Total Payouts</p>
                 <p className="text-3xl font-bold tracking-widest">{formatCurrency(data?.globalStats.total_payouts || 0)}</p>
                 <p className="text-[10px] text-emerald-500 mt-2 font-bold">{formatCurrency(data?.payoutMetrics?.processing || 0)} PROCESSING</p>
-              </div>
-
-              <div className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-xl">
-                <p className="text-zinc-500 text-xs mb-2 uppercase">Loss Ratio</p>
-                <p className={`text-3xl font-bold tracking-widest ${(data?.systemMetrics.lossRatio || 0) > 80 ? 'text-red-500' : 'text-emerald-500'}`}>
-                  {data?.systemMetrics.lossRatio || 0}%
-                </p>
-                <p className="text-[10px] text-zinc-500 mt-2">CLAIM_TREND: {data?.systemMetrics.claimTrend > 0 ? '+' : ''}{data?.systemMetrics.claimTrend}%</p>
               </div>
 
               <div className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-xl border-dashed">
@@ -319,15 +315,11 @@ export default function ControlDashboardPage() {
                   ) : (
                     <div className="flex gap-2">
                       <button 
-                        onClick={() => {
-                          setTierPrices({ ...tempPrices });
-                          setEditingPrices(false);
-                          setPriceUpdateStatus("Prices updated successfully!");
-                          setTimeout(() => setPriceUpdateStatus(null), 3000);
-                        }}
-                        className="text-[10px] px-3 py-1 bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+                        onClick={handleSavePrices}
+                        disabled={savingPrices}
+                        className="text-[10px] px-3 py-1 bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        SAVE
+                        {savingPrices ? "SAVING..." : "SAVE"}
                       </button>
                       <button 
                         onClick={() => {
@@ -499,9 +491,36 @@ export default function ControlDashboardPage() {
                 <h3 className="font-bold text-sm">🧾 GLOBAL CLAIMS MONITORING</h3>
                 <button className="px-3 py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700">Export CSV</button>
               </div>
-              <div className="p-4 text-center text-zinc-500">
-                <p>Real-time claims data streams here</p>
-                <p className="text-xs mt-2">Connect to live API for full functionality</p>
+              <div className="divide-y divide-zinc-800 max-h-96 overflow-y-auto">
+                {data?.recentClaims?.length ? (
+                  data.recentClaims.map((claim) => (
+                    <div key={claim.id} className="p-4 flex items-center justify-between hover:bg-zinc-800/30">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{TRIGGER_INFO[claim.trigger_type || "rainfall"]?.icon || "⚠️"}</span>
+                        <div>
+                          <p className="font-medium text-sm">Worker #{claim.worker_id?.slice(0, 8)}</p>
+                          <p className="text-xs text-zinc-500">
+                            {TRIGGER_INFO[claim.trigger_type || "rainfall"]?.name || "Unknown Trigger"} • {new Date(claim.claim_time || claim.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">{formatCurrency(Number(claim.amount || 0))}</p>
+                        <p className={`text-xs ${
+                          claim.status === "approved"
+                            ? "text-emerald-400"
+                            : claim.status === "rejected"
+                              ? "text-red-400"
+                              : "text-yellow-400"
+                        }`}>
+                          {claim.status?.toUpperCase()}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-6 text-center text-zinc-500">No claims available</div>
+                )}
               </div>
             </div>
           </div>
@@ -558,7 +577,7 @@ export default function ControlDashboardPage() {
                   {data?.flaggedClaims?.map(claim => (
                     <div key={claim.id} className="p-4 flex items-center justify-between hover:bg-zinc-800/30">
                       <div className="flex items-center gap-3">
-                        <span className="text-xl">{TRIGGER_INFO[claim.trigger_type]?.icon}</span>
+                        <span className="text-xl">{TRIGGER_INFO[claim.trigger_type || "rainfall"]?.icon}</span>
                         <div>
                           <p className="font-medium">{formatCurrency(Number(claim.amount))}</p>
                           <p className="text-xs text-zinc-500">Worker #{claim.worker_id?.slice(0, 8)}</p>

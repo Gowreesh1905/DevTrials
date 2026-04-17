@@ -6,12 +6,12 @@ import Chatbot from "@/app/components/Chatbot";
 import type {
   Worker,
   InsuranceSubscription,
+  InsurancePlan,
   Claim,
   Payout,
   DeliveryZone,
   WorkerVehicle,
   WorkerWeeklyStats,
-  PlanTierConfig,
   TriggerType,
   Disruption,
 } from "@/lib/database.types";
@@ -22,7 +22,22 @@ const TRIGGER_INFO: Record<TriggerType, { name: string; icon: string }> = {
   flood: { name: "Urban Flooding", icon: "🌊" },
   cold_fog: { name: "Dense Fog/Cold", icon: "🌫️" },
   civil_unrest: { name: "Civil Disruption", icon: "⚠️" },
-  accident: { name: "Minor Accident", icon: "🚗" },
+  platform_outage: { name: "Platform Outage", icon: "🔌" },
+};
+
+const TRIGGER_CODE: Record<TriggerType, string> = {
+  rainfall: "T1",
+  extreme_heat: "T2",
+  flood: "T3",
+  cold_fog: "T4",
+  civil_unrest: "T5",
+  platform_outage: "T6",
+};
+
+const PLAN_TRIGGER_OPTIONS: Record<string, TriggerType[]> = {
+  starter: ["rainfall", "extreme_heat", "cold_fog"],
+  shield: ["rainfall", "extreme_heat", "flood", "cold_fog", "civil_unrest"],
+  pro: ["rainfall", "extreme_heat", "flood", "cold_fog", "civil_unrest", "platform_outage"],
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -33,9 +48,16 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 interface DashboardData {
-  worker: Worker;
+  worker: Worker & { city?: string; upi_id?: string };
   subscription: InsuranceSubscription | null;
-  planConfig: PlanTierConfig | null;
+  workerInsurance?: {
+    id: string;
+    worker_id: string;
+    plan: string;
+    start_date: string;
+    created_at: string;
+  } | null;
+  insurancePlan: InsurancePlan | null;
   vehicle: WorkerVehicle | null;
   zone: DeliveryZone | null;
   claims: Claim[];
@@ -85,11 +107,11 @@ export default function UserDashboardPage() {
         }
 
         const dashboardData = (await res.json()) as DashboardData & {
-        activeDisruption: Disruption | null;
-        todayEarnings: number;
-        predictedEarnings: number;
-        pendingClaim: Claim | null;
-      };
+          activeDisruption: Disruption | null;
+          todayEarnings: number;
+          predictedEarnings: number;
+          pendingClaim: Claim | null;
+        };
         setData(dashboardData);
       } catch {
         setError("Failed to load dashboard data");
@@ -124,11 +146,26 @@ export default function UserDashboardPage() {
     );
   }
 
-  const { worker, subscription, planConfig, vehicle, zone, claims, payouts, weeklyStats, walletBalance } = data;
-  const activeDisruption = (data as any).activeDisruption as Disruption | null;
-  const todayEarnings = (data as any).todayEarnings as number || 0;
-  const predictedEarnings = (data as any).predictedEarnings as number || 500;
-  const pendingClaim = (data as any).pendingClaim as Claim | null;
+  const { 
+    worker, 
+    subscription, 
+    workerInsurance, 
+    insurancePlan, 
+    vehicle, 
+    zone, 
+    claims, 
+    payouts, 
+    weeklyStats, 
+    walletBalance,
+    activeDisruption,
+    todayEarnings: rawTodayEarnings,
+    predictedEarnings: rawPredictedEarnings,
+    pendingClaim
+  } = data;
+
+  // Apply defaults for earnings
+  const todayEarnings = rawTodayEarnings ?? 0;
+  const predictedEarnings = rawPredictedEarnings ?? 500;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -169,13 +206,18 @@ export default function UserDashboardPage() {
     return colors[tier] || colors.starter;
   };
 
+  const formatPlanName = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
   const totalClaimsPaid = claims
     .filter((c) => c.status === "paid")
     .reduce((sum, c) => sum + Number(c.amount), 0);
 
   const weeklyClaimTotal = subscription?.weekly_claim_total || 0;
-  const weeklyCap = planConfig?.weekly_cap || 0;
+  const weeklyCap = insurancePlan?.weekly_max_payout || 0;
   const remainingCap = weeklyCap - weeklyClaimTotal;
+  const estimatedHourlyPayout = insurancePlan ? Math.max(1, Math.round(Number(insurancePlan.weekly_max_payout) / 10)) : 0;
+  const selectedPlanKey = (insurancePlan?.name || "").toLowerCase();
+  const allowedManualTriggers = PLAN_TRIGGER_OPTIONS[selectedPlanKey] || [];
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -214,7 +256,7 @@ export default function UserDashboardPage() {
                 className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${worker.platform === "blinkit" ? "bg-yellow-400 text-zinc-900" : worker.platform === "instamart" ? "bg-orange-500" : "bg-purple-600"
                   }`}
               >
-                {worker.name.charAt(0)}
+                {(worker.name || "W").charAt(0)}
               </div>
             </div>
             <button 
@@ -235,7 +277,7 @@ export default function UserDashboardPage() {
         {/* Welcome Section */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-            Welcome back, {worker.name.split(" ")[0]}!
+            Welcome back, {(worker.name || "Worker").split(" ")[0]}!
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400 flex items-center mt-1">
             <span
@@ -278,39 +320,38 @@ export default function UserDashboardPage() {
         )}
 
         {/* Insurance Status Card - AT TOP */}
-        {subscription && planConfig ? (
-          <div className={`bg-gradient-to-r ${getPlanColor(subscription.plan_tier)} rounded-2xl p-6 mb-6 text-white`}>
+        {insurancePlan ? (
+          <div className={`bg-gradient-to-r ${getPlanColor(insurancePlan.name)} rounded-2xl p-6 mb-6 text-white`}>
             <div className="flex items-start justify-between mb-4">
               <div>
-                <p className="text-white/70 text-sm">SwiftShield Insurance</p>
-                <h2 className="text-2xl font-bold">{planConfig.name} Plan</h2>
+                <p className="text-white/70 text-sm">
+                  {subscription ? "SwiftShield Insurance" : "Selected Insurance Plan"}
+                </p>
+                <h2 className="text-2xl font-bold">{formatPlanName(insurancePlan.name)} Plan</h2>
               </div>
               <span
-                className={`px-3 py-1 rounded-full text-sm font-medium ${subscription.status === "active"
-                  ? "bg-white/20 text-white"
-                  : "bg-red-500 text-white"
-                  }`}
+                className="px-3 py-1 rounded-full text-sm font-medium bg-white/20 text-white"
               >
-                {subscription.status.toUpperCase()}
+                {subscription ? subscription.status.toUpperCase() : "SELECTED"}
               </span>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <div>
                 <p className="text-white/70 text-sm">Weekly Premium</p>
-                <p className="text-xl font-semibold">{formatCurrency(planConfig.weekly_premium)}</p>
+                <p className="text-xl font-semibold">{formatCurrency(insurancePlan.weekly_premium)}</p>
               </div>
               <div>
-                <p className="text-white/70 text-sm">Weekly Cap</p>
-                <p className="text-xl font-semibold">{formatCurrency(planConfig.weekly_cap)}</p>
+                <p className="text-white/70 text-sm">Weekly Max Payout</p>
+                <p className="text-xl font-semibold">{formatCurrency(insurancePlan.weekly_max_payout)}</p>
               </div>
               <div>
-                <p className="text-white/70 text-sm">Remaining This Week</p>
-                <p className="text-xl font-semibold">{formatCurrency(remainingCap)}</p>
+                <p className="text-white/70 text-sm">Coverage</p>
+                <p className="text-xl font-semibold">{insurancePlan.coverage_percentage}%</p>
               </div>
               <div>
-                <p className="text-white/70 text-sm">Total Claims Paid</p>
-                <p className="text-xl font-semibold">{formatCurrency(totalClaimsPaid)}</p>
+                <p className="text-white/70 text-sm">Claim Wait</p>
+                <p className="text-xl font-semibold">{insurancePlan.claim_wait_minutes} mins</p>
               </div>
             </div>
 
@@ -328,15 +369,28 @@ export default function UserDashboardPage() {
               </div>
             </div>
 
-            {/* Covered Triggers */}
-            <div>
-              <p className="text-white/70 text-sm mb-2">Covered Events</p>
-              <div className="flex flex-wrap gap-2">
-                {planConfig.triggers.map((t) => (
-                  <span key={t} className="inline-flex items-center px-2 py-1 bg-white/20 rounded-lg text-sm">
-                    {TRIGGER_INFO[t]?.icon} {TRIGGER_INFO[t]?.name}
-                  </span>
-                ))}
+            {!subscription && workerInsurance && (
+              <div className="mb-4 rounded-xl bg-white/10 p-3 text-sm text-white/90">
+                Selected on {new Date(workerInsurance.start_date).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </div>
+            )}
+
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="rounded-xl bg-white/10 p-3">
+                <p className="text-white/70 text-sm">Platform Outage</p>
+                <p className="font-semibold">
+                  {insurancePlan.includes_platform_outage ? "Included in coverage" : "Not included"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/10 p-3">
+                <p className="text-white/70 text-sm">Plan Summary</p>
+                <p className="font-semibold">
+                  {insurancePlan.description || "No description available for this plan."}
+                </p>
               </div>
             </div>
           </div>
@@ -395,7 +449,7 @@ export default function UserDashboardPage() {
               <span className="text-2xl mr-3">👤</span>
               <div>
                 <p className="text-xs text-zinc-500">Name</p>
-                <p className="font-medium text-zinc-900 dark:text-white">{worker.name}</p>
+                <p className="font-medium text-zinc-900 dark:text-white">{worker.name || "Not set"}</p>
               </div>
             </div>
             <div className="flex items-center p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
@@ -508,8 +562,8 @@ export default function UserDashboardPage() {
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => {
-                    if (!subscription) {
-                      alert("Warning: You don't have an active insurance subscription. Submission may fail if no plan is linked.");
+                    if (!insurancePlan) {
+                      alert("Warning: You don't have a selected insurance plan. Please choose a plan first.");
                     }
                     setShowManualClaimModal(true);
                   }}
@@ -653,13 +707,25 @@ export default function UserDashboardPage() {
                 const endTime = formData.get("end_time") as string;
                 const triggerType = formData.get("trigger_type") as TriggerType;
                 const description = formData.get("description") as string;
+
+                if (!allowedManualTriggers.includes(triggerType)) {
+                  alert("Selected disruption type is not available for your current plan.");
+                  setIsSubmittingClaim(false);
+                  return;
+                }
                 
                 // Calculate duration and amount
                 const start = new Date(`${claimDate}T${startTime}`);
                 const end = endTime ? new Date(`${claimDate}T${endTime}`) : new Date(start.getTime() + 60 * 60 * 1000);
                 const durationMinutes = Math.max(0, Math.floor((end.getTime() - start.getTime()) / (1000 * 60)));
-                const hourlyPayout = planConfig?.hourly_payout || 0;
+                const hourlyPayout = estimatedHourlyPayout;
                 const amount = Math.round((durationMinutes / 60) * hourlyPayout);
+
+                if (!insurancePlan) {
+                  alert("Please select an insurance plan before filing a claim.");
+                  setIsSubmittingClaim(false);
+                  return;
+                }
 
                 try {
                   const res = await fetch("/api/claims", {
@@ -668,6 +734,7 @@ export default function UserDashboardPage() {
                     body: JSON.stringify({
                       worker_id: worker.id,
                       subscription_id: subscription?.id,
+                      worker_insurance_id: workerInsurance?.id,
                       trigger_type: triggerType,
                       claim_date: claimDate,
                       start_time: startTime,
@@ -716,10 +783,20 @@ export default function UserDashboardPage() {
                   required
                   className="w-full bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                 >
-                  {Object.entries(TRIGGER_INFO).map(([type, info]) => (
-                    <option key={type} value={type}>{info.icon} {info.name}</option>
-                  ))}
+                  {allowedManualTriggers.map((type) => {
+                    const info = TRIGGER_INFO[type];
+                    return (
+                      <option key={type} value={type}>
+                        {TRIGGER_CODE[type]} • {info.icon} {info.name}
+                      </option>
+                    );
+                  })}
                 </select>
+                {insurancePlan ? (
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Allowed by your {formatPlanName(insurancePlan.name)} plan.
+                  </p>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

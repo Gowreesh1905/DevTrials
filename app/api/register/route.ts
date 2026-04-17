@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase";
-import { Platform, VehicleType, User, UserRole } from "@/lib/database.types";
+import { Platform, VehicleType, UserRole } from "@/lib/database.types";
 import { verifyRegistrationOtpSession } from "@/lib/registration-otp-store";
 
 interface RegisterPayload {
@@ -18,7 +18,20 @@ interface RegisterPayload {
 
 const PHONE_REGEX = /^\d{10}$/;
 const UPI_REGEX = /^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/;
-const VEHICLE_TYPES: VehicleType[] = ["bike", "scooter", "bicycle"];
+const VEHICLE_TYPES: VehicleType[] = ["bike", "scooter"];
+const ROLE_VALUES: UserRole[] = ["worker", "zonal_admin", "control_admin"];
+
+function normalizeIndianPhone(phone: string) {
+  return `+91${phone}`;
+}
+
+function getPhoneLookupValues(phone: string): string[] {
+  return [phone, normalizeIndianPhone(phone)];
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +41,7 @@ export async function POST(request: Request) {
     const phone = payload.phone?.trim();
     const platform = payload.platform;
     const city = payload.city?.trim();
-    const role = payload.role || 'worker'; // Default to worker (delivery partner)
+    const role = payload.role || "worker";
     const upiId = payload.upiId?.trim() || null;
     const vehicleType = payload.vehicleType;
     const vehicleRegistration = payload.vehicleRegistration?.trim() || null;
@@ -42,8 +55,12 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!ROLE_VALUES.includes(role)) {
+      return NextResponse.json({ error: "Invalid role selected" }, { status: 400 });
+    }
+
     // Role-specific validation
-    if (role === 'worker') {
+    if (role === "worker") {
       if (!platform || !vehicleType) {
         return NextResponse.json(
           { error: "Platform and vehicle details are required for delivery partners" },
@@ -53,6 +70,19 @@ export async function POST(request: Request) {
       if (!VEHICLE_TYPES.includes(vehicleType)) {
         return NextResponse.json({ error: "Please select a valid vehicle type" }, { status: 400 });
       }
+      if (vehicleRegistration && vehicleRegistration.length > 20) {
+        return NextResponse.json(
+          { error: "Vehicle registration must be 20 characters or less" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (role === "zonal_admin" && !city) {
+      return NextResponse.json(
+        { error: "City is required for zonal admin registration" },
+        { status: 400 }
+      );
     }
 
     if (name.length < 2 || name.length > 100) {
@@ -79,13 +109,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: otpVerification.error }, { status: 401 });
     }
 
-    const admin = createAdminClient();
+    const phoneWithCountryCode = normalizeIndianPhone(phone);
+    const phoneLookupValues = getPhoneLookupValues(phone);
+    const admin = createAdminClient() as any;
 
     // Check existing user in users table
     const { data: existingUser, error: existingUserError } = await admin
       .from("users")
       .select("id")
-      .eq("phone", phone)
+      .in("phone", phoneLookupValues)
       .maybeSingle();
 
     if (existingUserError) {
@@ -104,7 +136,7 @@ export async function POST(request: Request) {
       .from("users")
       .insert({
         name,
-        phone,
+        phone: phoneWithCountryCode,
         role,
       })
       .select("*")
@@ -118,30 +150,55 @@ export async function POST(request: Request) {
     }
 
     // 2. If role is 'worker', create Partner specifics in workers table
-    if (role === 'worker' && platform && vehicleType) {
-      // Find or create delivery zone for the city (if city provided)
-      let assignedZoneId: string | null = null;
-      if (city) {
-        const { data: existingZone } = await admin
-          .from("delivery_zones")
-          .select("id")
-          .ilike("city", city)
-          .maybeSingle();
-        
-        if (existingZone) {
-          assignedZoneId = existingZone.id;
-        }
+    // Find or create delivery zone for city-driven roles
+    let assignedZoneId: string | null = null;
+    if (city) {
+      const { data: existingZone, error: existingZoneError } = await admin
+        .from("delivery_zones")
+        .select("id")
+        .ilike("city", city)
+        .maybeSingle();
+
+      if (existingZoneError) {
+        await admin.from("users").delete().eq("id", user.id);
+        return NextResponse.json(
+          { error: existingZoneError.message || "Failed to lookup delivery zone" },
+          { status: 500 }
+        );
       }
+
+      if (existingZone?.id) {
+        assignedZoneId = existingZone.id;
+      } else {
+        const { data: createdZone, error: zoneCreateError } = await admin
+          .from("delivery_zones")
+          .insert({
+            city,
+            name: `${city} Zone`,
+          })
+          .select("id")
+          .single();
+
+        if (zoneCreateError || !createdZone) {
+          await admin.from("users").delete().eq("id", user.id);
+          return NextResponse.json(
+            { error: zoneCreateError?.message || "Failed to assign delivery zone" },
+            { status: 500 }
+          );
+        }
+
+        assignedZoneId = createdZone.id;
+      }
+    }
+
+    if (role === "worker" && platform && vehicleType) {
 
       const { data: worker, error: workerCreateError } = await admin
         .from("workers")
         .insert({
           user_id: user.id,
           name,
-          phone, // Store phone in workers for quick lookup
           platform,
-          city: city || null,
-          upi_id: upiId,
           assigned_zone_id: assignedZoneId,
         })
         .select("*")
@@ -174,9 +231,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ user, worker }, { status: 201 });
     }
 
-    return NextResponse.json({ user }, { status: 201 });
-  } catch (error: any) {
+    // 3. For admin roles, create admin profile row
+    const { data: adminProfile, error: adminCreateError } = await admin
+      .from("admins")
+      .insert({
+        user_id: user.id,
+        role,
+        assigned_zone_id: assignedZoneId,
+      })
+      .select("*")
+      .single();
+
+    if (adminCreateError || !adminProfile) {
+      await admin.from("users").delete().eq("id", user.id);
+      return NextResponse.json(
+        { error: adminCreateError?.message || "Failed to create admin profile" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ user, admin: adminProfile }, { status: 201 });
+  } catch (error: unknown) {
     console.error("Registration error:", error);
-    return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
+    return NextResponse.json(
+      { error: getErrorMessage(error, "Failed to create account") },
+      { status: 500 }
+    );
   }
 }

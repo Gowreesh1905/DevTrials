@@ -18,7 +18,7 @@ const TRIGGER_INFO: Record<TriggerType, { name: string; icon: string }> = {
   flood: { name: "Urban Flooding", icon: "🌊" },
   cold_fog: { name: "Dense Fog/Cold", icon: "🌫️" },
   civil_unrest: { name: "Civil Disruption", icon: "⚠️" },
-  accident: { name: "Minor Accident", icon: "🚗" },
+  platform_outage: { name: "Platform Outage", icon: "🔌" },
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -43,7 +43,6 @@ interface ZonalDashboardData {
     approvedClaims: number;
     rejectedClaims: number;
     totalPayouts: number;
-    lossRatio: number;
     avgClaimAmount: number;
   };
 }
@@ -56,7 +55,7 @@ export default function ZonalDashboardPage() {
 
   useEffect(() => {
     async function fetchZonalData() {
-      const workerId = localStorage.getItem("workerId");
+      const adminId = localStorage.getItem("userId"); // Logic in LoginPage stores admin user id in userId
       const role = localStorage.getItem("userRole");
 
       if (role !== "zonal_admin") {
@@ -64,50 +63,21 @@ export default function ZonalDashboardPage() {
         return;
       }
 
+      if (!adminId) {
+        setError("Not logged in");
+        setLoading(false);
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/admin/zonal-stats?adminId=${workerId}`);
+        const res = await fetch(`/api/admin/zonal-stats?adminId=${adminId}`);
         if (!res.ok) {
           throw new Error("Failed to fetch zonal data");
         }
         const zonalData = await res.json();
         setData(zonalData);
       } catch (err) {
-        setError("Zonal Admin API not fully implemented yet. Showing Mock Data.");
-        // Mock data for UI demonstration
-        setData({
-          admin: { name: "Zonal Admin", role: "zonal_admin" } as Worker,
-          zone: { name: "Indiranagar", city: "Bangalore", risk_score: 72 } as DeliveryZone,
-          pendingClaims: [
-            { id: "1", worker_id: "w1", amount: 250, trigger_type: "rainfall", status: "pending", claim_date: new Date().toISOString(), duration_minutes: 45 } as Claim,
-            { id: "2", worker_id: "w2", amount: 400, trigger_type: "flood", status: "pending", claim_date: new Date().toISOString(), duration_minutes: 60 } as Claim,
-            { id: "3", worker_id: "w3", amount: 180, trigger_type: "extreme_heat", status: "pending", claim_date: new Date().toISOString(), duration_minutes: 30 } as Claim,
-          ],
-          approvedClaims: [
-            { id: "4", worker_id: "w4", amount: 320, trigger_type: "rainfall", status: "approved", claim_date: new Date(Date.now() - 86400000).toISOString() } as Claim,
-          ],
-          rejectedClaims: [
-            { id: "5", worker_id: "w5", amount: 500, trigger_type: "civil_unrest", status: "rejected", rejection_reason: "GPS anomaly detected", claim_date: new Date(Date.now() - 172800000).toISOString() } as Claim,
-          ],
-          flaggedClaims: [
-            { id: "6", worker_id: "w6", amount: 850, trigger_type: "flood", status: "pending", claim_date: new Date().toISOString(), fraud_score: 78, anomaly_score: 0.85 } as Claim & { fraud_score: number; anomaly_score: number },
-          ],
-          activeWorkers: { count: 142, online: 89, offline: 53 },
-          activeDisruptions: [
-            { id: "d1", trigger_type: "rainfall", severity: "high", is_active: true, start_time: new Date(Date.now() - 3600000).toISOString() } as Disruption,
-          ],
-          payoutsInProgress: [
-            { id: "p1", worker_id: "w1", amount: 250, status: "processing", created_at: new Date().toISOString() } as Payout,
-            { id: "p2", worker_id: "w2", amount: 320, status: "processing", created_at: new Date().toISOString() } as Payout,
-          ],
-          zoneMetrics: {
-            totalClaims: 156,
-            approvedClaims: 128,
-            rejectedClaims: 28,
-            totalPayouts: 42500,
-            lossRatio: 68,
-            avgClaimAmount: 275,
-          },
-        });
+        setError("Failed to load dashboard data. Please try again later.");
       } finally {
         setLoading(false);
       }
@@ -115,6 +85,39 @@ export default function ZonalDashboardPage() {
 
     fetchZonalData();
   }, []);
+
+  const handleClaimAction = async (claimId: string, status: "approved" | "rejected", reason?: string) => {
+    const adminId = localStorage.getItem("userId");
+    if (!adminId) return;
+
+    try {
+      const res = await fetch("/api/admin/approve-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          claim_id: claimId,
+          status,
+          admin_id: adminId,
+          reason
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || `Failed to ${status} claim`);
+        return;
+      }
+
+      // Refresh data
+      const statsRes = await fetch(`/api/admin/zonal-stats?adminId=${adminId}`);
+      if (statsRes.ok) {
+        setData(await statsRes.json());
+      }
+      alert(`Claim ${status} successfully`);
+    } catch (err) {
+      alert("Something went wrong");
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -198,13 +201,13 @@ export default function ZonalDashboardPage() {
               {data.activeDisruptions.map(d => (
                 <div key={d.id} className="bg-white/10 rounded-lg p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl">{TRIGGER_INFO[d.trigger_type]?.icon || "⚠️"}</span>
+                    <span className="text-2xl">{(TRIGGER_INFO[(d as any).trigger_type as TriggerType] || TRIGGER_INFO.rainfall).icon}</span>
                     <span className={`px-2 py-0.5 rounded text-xs font-bold bg-white/20`}>
-                      {d.severity?.toUpperCase()}
+                      {(d as any).severity?.toUpperCase()}
                     </span>
                   </div>
-                  <p className="font-medium mt-1">{TRIGGER_INFO[d.trigger_type]?.name}</p>
-                  <p className="text-xs text-white/70">Since {new Date(d.start_time).toLocaleTimeString()}</p>
+                  <p className="font-medium mt-1">{(TRIGGER_INFO[(d as any).trigger_type as TriggerType] || TRIGGER_INFO.rainfall).name}</p>
+                  <p className="text-xs text-white/70">Since {new Date((d as any).start_time).toLocaleTimeString()}</p>
                 </div>
               ))}
             </div>
@@ -212,7 +215,7 @@ export default function ZonalDashboardPage() {
         )}
 
         {/* Stats Grid */}
-        <div className="grid md:grid-cols-4 gap-4 mb-6">
+        <div className="grid md:grid-cols-3 gap-4 mb-6">
           {/* Active Workers */}
           <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
             <div className="flex items-center justify-between mb-2">
@@ -249,15 +252,6 @@ export default function ZonalDashboardPage() {
             <p className="text-xs text-zinc-500 mt-2">{data?.payoutsInProgress.length || 0} processing</p>
           </div>
 
-          {/* Zone Metrics */}
-          <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">📊</span>
-              <span className="text-xs text-purple-600">METRICS</span>
-            </div>
-            <p className="text-3xl font-bold text-purple-600">{data?.zoneMetrics.lossRatio || 0}%</p>
-            <p className="text-xs text-zinc-500 mt-2">Loss Ratio</p>
-          </div>
         </div>
 
         {/* Flagged Claims Alert */}
@@ -270,10 +264,10 @@ export default function ZonalDashboardPage() {
               {data.flaggedClaims.map(claim => (
                 <div key={claim.id} className="bg-white dark:bg-zinc-900 rounded-lg p-3 flex items-center justify-between border border-red-200 dark:border-red-800">
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">{TRIGGER_INFO[claim.trigger_type]?.icon || "⚠️"}</span>
+                    <span className="text-xl">{(TRIGGER_INFO[claim.trigger_type as TriggerType] || TRIGGER_INFO.rainfall).icon}</span>
                     <div>
                       <p className="font-medium text-zinc-900 dark:text-white">Worker #{claim.worker_id?.slice(0, 8)}</p>
-                      <p className="text-xs text-zinc-500">{formatCurrency(Number(claim.amount))} • {claim.trigger_type}</p>
+                      <p className="text-xs text-zinc-500">{formatCurrency(Number(claim.amount))} • {(TRIGGER_INFO[claim.trigger_type as TriggerType] || TRIGGER_INFO.rainfall).name}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -329,12 +323,12 @@ export default function ZonalDashboardPage() {
                       activeTab === "approved" ? "bg-emerald-100" : 
                       activeTab === "rejected" ? "bg-red-100" : "bg-amber-100"
                     }`}>
-                      {TRIGGER_INFO[claim.trigger_type]?.icon || "📋"}
+                      {(TRIGGER_INFO[claim.trigger_type as TriggerType] || TRIGGER_INFO.rainfall).icon}
                     </div>
                     <div>
                       <p className="font-medium text-zinc-900 dark:text-white">Worker #{claim.worker_id?.slice(0, 8) || "N/A"}</p>
                       <p className="text-xs text-zinc-500">
-                        {TRIGGER_INFO[claim.trigger_type]?.name || claim.trigger_type} • {new Date(claim.claim_date).toLocaleString()}
+                        {(TRIGGER_INFO[claim.trigger_type as TriggerType] || TRIGGER_INFO.rainfall).name} • {new Date((claim.claim_time || (claim as any).claim_date)).toLocaleString()}
                         {claim.duration_minutes && ` • ${claim.duration_minutes} mins`}
                       </p>
                       {claim.rejection_reason && (
@@ -346,8 +340,21 @@ export default function ZonalDashboardPage() {
                     <span className="font-bold text-zinc-900 dark:text-white">{formatCurrency(Number(claim.amount))}</span>
                     {activeTab === "pending" && (
                       <>
-                        <button className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700">Approve</button>
-                        <button className="px-3 py-1 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700">Deny</button>
+                        <button 
+                          onClick={() => handleClaimAction(claim.id, "approved")}
+                          className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700"
+                        >
+                          Approve
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const reason = prompt("Enter rejection reason:");
+                            if (reason !== null) handleClaimAction(claim.id, "rejected", reason);
+                          }}
+                          className="px-3 py-1 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700"
+                        >
+                          Deny
+                        </button>
                       </>
                     )}
                   </div>
@@ -402,12 +409,6 @@ export default function ZonalDashboardPage() {
               <div className="flex justify-between items-center">
                 <span className="text-zinc-600 dark:text-zinc-400">Avg. Claim Amount</span>
                 <span className="font-bold text-zinc-900 dark:text-white">{formatCurrency(data?.zoneMetrics.avgClaimAmount || 0)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-600 dark:text-zinc-400">Loss Ratio</span>
-                <span className={`font-bold ${(data?.zoneMetrics.lossRatio || 0) > 80 ? "text-red-600" : "text-emerald-600"}`}>
-                  {data?.zoneMetrics.lossRatio || 0}%
-                </span>
               </div>
               <div className="pt-2 border-t border-zinc-200 dark:border-zinc-700">
                 <div className="flex justify-between items-center">

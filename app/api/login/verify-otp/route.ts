@@ -15,6 +15,10 @@ const PHONE_REGEX = /^\d{10}$/;
 const OTP_REGEX = /^\d{6}$/;
 const PLATFORM_VALUES: Platform[] = ["blinkit", "zepto", "instamart"];
 
+function getPhoneLookupValues(phone: string): string[] {
+  return [phone, `+91${phone}`];
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as LoginVerifyOtpPayload;
@@ -46,13 +50,11 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
 
-    // Normalize phone to include country code for database lookup
-    const phoneWithCountryCode = `+91${phone}`;
-
+    const phoneLookupValues = getPhoneLookupValues(phone);
     const { data: user, error: userError } = await admin
       .from("users")
       .select("*")
-      .eq("phone", phoneWithCountryCode)
+      .in("phone", phoneLookupValues)
       .maybeSingle();
 
     if (userError) {
